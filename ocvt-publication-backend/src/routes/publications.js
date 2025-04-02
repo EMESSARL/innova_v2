@@ -300,8 +300,8 @@ router.get(
     try {
       const presignedUrl = await getFileForView(id);
 
-      // Rediriger vers l'URL présignée pour visualiser le fichier
-      res.redirect(presignedUrl);
+      // Retourner l'URL présignée pour visualiser le fichier
+      return res.status(200).json({ url: presignedUrl });
     } catch (error) {
       if (
         error.message === "Publication non trouvée ou non publiée" ||
