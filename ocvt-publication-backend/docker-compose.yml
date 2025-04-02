@@ -1,0 +1,16 @@
+services:
+  ocvt-pub-module:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "41000:41000"
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
