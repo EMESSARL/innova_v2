@@ -7,7 +7,7 @@ services:
     env_file:
       - .env
     ports:
-      - "41000:41000"
+      - "$SERVER_PORT:$SERVER_PORT"
     networks:
       - app-network
 

@@ -8,5 +8,5 @@ app.use("/api/", publicationRoutes);
 
 const PORT = process.env.SERVER_PORT;
 app.listen(PORT, () => {
-  console.log(`Serveur démarré sur le port ${PORT}`);
+  // console.log(`Serveur démarré sur le port ${PORT}`);
 });

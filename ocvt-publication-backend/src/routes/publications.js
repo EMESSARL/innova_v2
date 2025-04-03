@@ -207,7 +207,7 @@ router.delete(
   }
 );
 
-// POST /publication/{id}/files
+// POST /publication/:id/files
 // Ne sera pas utilisée en production.
 router.post(
   "/publication/:id/files",
@@ -317,7 +317,7 @@ router.get(
   }
 );
 
-// DELETE /publication/{id}/files
+// DELETE /publication/:id/files
 // Ne sera pas utilisée en production.
 router.delete(
   "/publication/:id/files",
