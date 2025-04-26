@@ -1,0 +1,16 @@
+services:
+  ocvt-dataws-module:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "$SERVER_PORT:$SERVER_PORT"
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
