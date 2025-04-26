@@ -12,7 +12,7 @@ const Submissions = sequelize.define(
       autoIncrement: true,
     },
     user_id: {
-      type: DataTypes.STRING, // Référence à l'utilisateur (fournie par Authentication Microfrontend)
+      type: DataTypes.STRING,
       allowNull: false,
     },
     dataset_id: {
@@ -25,7 +25,7 @@ const Submissions = sequelize.define(
     },
     result_id: {
       type: DataTypes.INTEGER,
-      allowNull: true, // Optionnel
+      allowNull: true,
       references: {
         model: Results,
         key: "result_id",
@@ -42,23 +42,12 @@ const Submissions = sequelize.define(
       defaultValue: "pending",
     },
     submission_comments: {
-      type: DataTypes.TEXT, // Commentaires pour le validateur (texte)
+      type: DataTypes.TEXT,
       allowNull: true,
     },
-    // created_at: {
-    //   type: DataTypes.DATE,
-    //   allowNull: false,
-    //   defaultValue: Sequelize.NOW,
-    // },
-    // updated_at: {
-    //   type: DataTypes.DATE,
-    //   allowNull: false,
-    //   defaultValue: Sequelize.NOW,
-    // },
   },
   {
     tableName: "Submissions",
-    // timestamps: false,
   }
 );
 

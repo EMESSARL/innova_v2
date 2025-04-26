@@ -2,7 +2,6 @@ const sequelize = require("../config/db");
 const DataSources = require("./dataSources");
 const Datasets = require("./datasets");
 const ProcessingSteps = require("./processingSteps");
-// const Visualizations = require("./visualizations");
 const Results = require("./results");
 const Submissions = require("./submissions");
 
@@ -17,7 +16,6 @@ module.exports = {
   DataSources,
   Datasets,
   ProcessingSteps,
-  // Visualizations,
   Results,
   Submissions,
 };

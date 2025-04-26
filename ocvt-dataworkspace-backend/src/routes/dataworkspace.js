@@ -389,113 +389,10 @@ router.post(
   }
 );
 
-// router.post(
-//   "/results",
-//   authMiddleware,
-//   upload.single("file"),
-//   [
-//     check("source_id").isInt().withMessage("ID de la source invalide"),
-//     check("result_type")
-//       .isIn(["chart", "map", "report", "image", "geojson", "shapefile"])
-//       .withMessage(
-//         "Type de résultat invalide. Valeurs acceptées : chart, map, report, image, geojson, shapefile"
-//       ),
-//     // check("config")
-//     //   .optional()
-//     //   .isObject()
-//     //   .withMessage("La configuration doit être un objet"),
-//     check("file").custom((value, { req }) => {
-//       if (!req.file) {
-//         throw new Error("Un fichier est requis");
-//       }
-//       return true;
-//     }),
-//   ],
-//   async (req, res) => {
-//     if (req.body.config) {
-//       try {
-//         req.body.config = JSON.parse(req.body.config);
-//       } catch (e) {
-//         return res
-//           .status(400)
-//           .json({ error: "config doit être un objet JSON" });
-//       }
-//     }
-
-//     const errors = validationResult(req);
-//     if (!errors.isEmpty()) {
-//       return res.status(400).json({ errors: errors.array() });
-//     }
-
-//     const { source_id, result_type, config } = req.body;
-//     const userId = req.user.id;
-//     const file = req.file;
-
-//     try {
-//       const result = await dataworkspaceService.saveResult(
-//         userId,
-//         source_id,
-//         result_type,
-//         config,
-//         file
-//       );
-//       res.status(200).json(result);
-//     } catch (error) {
-//       if (
-//         error.message.includes("Source de données non trouvée") ||
-//         error.message.includes("Aucun jeu de données associé")
-//       ) {
-//         return res.status(404).json({ error: error.message });
-//       }
-//       if (
-//         error.message.includes("Type de résultat invalide") ||
-//         error.message.includes("MIME type invalide") ||
-//         error.message.includes("Au moins un fichier est requis") ||
-//         error.message.includes("Un shapefile doit inclure") ||
-//         error.message.includes("Le fichier ZIP doit contenir") ||
-//         error.message.includes(
-//           "Trop de fichiers pour un résultat non-shapefile"
-//         )
-//       ) {
-//         return res.status(400).json({ error: error.message });
-//       }
-//       res.status(500).json({ error: "Erreur serveur : " + error.message });
-//     }
-//   }
-// );
-
-// router.get(
-//   "/results/:id/download",
-//   authMiddleware,
-//   [check("id").isInt().withMessage("ID du résultat invalide")],
-//   async (req, res) => {
-//     const errors = validationResult(req);
-//     if (!errors.isEmpty()) {
-//       return res.status(400).json({ errors: errors.array() });
-//     }
-
-//     const resultId = req.params.id;
-//     const userId = req.user.id;
-
-//     try {
-//       const result = await dataworkspaceService.downloadResult(
-//         userId,
-//         resultId
-//       );
-//       res.status(200).json(result);
-//     } catch (error) {
-//       if (error.message.includes("Résultat non trouvé")) {
-//         return res.status(404).json({ error: error.message });
-//       }
-//       res.status(500).json({ error: "Erreur serveur : " + error.message });
-//     }
-//   }
-// );
-
 router.post(
   "/results",
   authMiddleware,
-  upload.any(), // Accepte plusieurs fichiers
+  upload.any(),
   [
     check("source_id").isInt().withMessage("ID de la source invalide"),
     check("result_type")
@@ -503,10 +400,6 @@ router.post(
       .withMessage(
         "Type de résultat invalide. Valeurs acceptées : image, report, json, geojson, shapefile"
       ),
-    // check("config")
-    //   .optional()
-    //   .isObject()
-    //   .withMessage("La configuration doit être un objet"),
     check("files").custom((value, { req }) => {
       if (!req.files || req.files.length === 0) {
         throw new Error("Au moins un fichier est requis");
@@ -656,7 +549,6 @@ router.post(
   }
 );
 
-// GET /submissions/:id/status
 router.get(
   "/submissions/:id/status",
   authMiddleware,
@@ -685,7 +577,6 @@ router.get(
   }
 );
 
-// PUT /submissions/:id
 router.put(
   "/submissions/:id",
   authMiddleware,
@@ -782,7 +673,6 @@ router.delete(
   }
 );
 
-// PATCH /submissions/:id/status
 router.patch(
   "/submissions/:id/status",
   authMiddleware,

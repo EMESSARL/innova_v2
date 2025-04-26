@@ -75,9 +75,7 @@ const addDataSource = async (
     user_id: userId,
     source_type: sourceType,
     source_name: sourceName,
-    connection_details: null, // Sera mis à jour après selon le type
-    // created_at: new Date(),
-    // updated_at: new Date(),
+    connection_details: null,
   });
 
   if (sourceType === "file") {
@@ -101,10 +99,6 @@ const addDataSource = async (
       dataFormat = fileExtension;
     }
 
-    // dataFormat =
-    //   fileExtension === "xls" || fileExtension === "xlsx"
-    //     ? "excel"
-    //     : fileExtension;
     filePath = `dataworkspace/sources/${userId}/${Date.now()}_${
       file.originalname
     }`;
@@ -113,43 +107,6 @@ const addDataSource = async (
     // Mettre à jour connection_details avec le file_path
     await newSource.update({ connection_details: { file_path: filePath } });
   }
-  /* else if (sourceType === "database") {
-    if (
-      !connectionDetails ||
-      !connectionDetails.url ||
-      !connectionDetails.credentials
-    ) {
-      throw new Error(
-        'URL et identifiants sont requis pour une source "database"'
-      );
-    }
-
-    // Simulation (à remplacer par une vraie connexion SQL si nécessaire)
-    const simulatedData = [{ id: 1, name: "Exemple" }];
-    const dataBuffer = Buffer.from(JSON.stringify(simulatedData));
-    filePath = `dataworkspace/sources/${userId}/${Date.now()}_${sourceName}.json`;
-    await minioClient.putObject(BUCKET_NAME, filePath, dataBuffer);
-    dataFormat = "json";
-
-    await newSource.update({ connection_details });
-  } else if (sourceType === "api") {
-    if (!connectionDetails || !connectionDetails.url) {
-      throw new Error('URL est requise pour une source "api"');
-    }
-
-    const response = await axios.get(connectionDetails.url, {
-      headers: connectionDetails.credentials
-        ? { Authorization: `Bearer ${connectionDetails.credentials.token}` }
-        : {},
-    });
-    const apiData = response.data;
-    const dataBuffer = Buffer.from(JSON.stringify(apiData));
-    filePath = `dataworkspace/sources/${userId}/${Date.now()}_${sourceName}.json`;
-    await minioClient.putObject(BUCKET_NAME, filePath, dataBuffer);
-    dataFormat = "json";
-
-    await newSource.update({ connection_details });
-  } */
 
   // Créer l'entrée dans Datasets avec le source_id dès le départ
   await Datasets.create({
@@ -162,8 +119,6 @@ const addDataSource = async (
       sourceType === "file"
         ? { original_filename: file?.originalname }
         : { source: sourceType, url: connectionDetails?.url },
-    // created_at: new Date(),
-    // updated_at: new Date(),
   });
 
   return {
@@ -377,22 +332,11 @@ const applyDataTransformation = async (
       );
       stepDescription = `Agrégation par ${parameters.group_by.join(", ")}`;
       break;
-    // case "compute":
-    //   if (!parameters.new_column) {
-    //     throw new Error("Paramètres new_column requis");
-    //   }
-    //   transformedData = computeNewColumn(
-    //     transformedData,
-    //     parameters.new_column
-    //   );
-    //   stepDescription = `Calcul de la colonne ${parameters.new_column.name}`;
-    //   break;
     default:
       throw new Error("Type de transformation non pris en charge");
   }
 
   // Stocker les données transformées dans MinIO
-  // console.log(dataset.metadata);
   const fileName = dataset.metadata.original_filename
     .split(".")
     .slice(0, -1)
@@ -573,90 +517,6 @@ const aggregateData = (data, groupBy, aggregations) => {
   return result;
 };
 
-// const aggregateData = (data, groupBy, aggregations) => {
-//   const grouped = {};
-//   data.forEach((row) => {
-//     const key = groupBy.map((col) => row[col]).join("||");
-//     if (!grouped[key]) {
-//       grouped[key] = { ...row, count: 1 };
-//       groupBy.forEach((col) => {
-//         grouped[key][col] = row[col];
-//       });
-//     } else {
-//       grouped[key].count += 1;
-//       aggregations.forEach((agg) => {
-//         const current = parseFloat(row[agg.column]) || 0;
-//         if (!grouped[key][agg.output_column]) {
-//           grouped[key][agg.output_column] = current;
-//         } else {
-//           switch (agg.function) {
-//             case "sum":
-//               grouped[key][agg.output_column] += current;
-//               break;
-//             case "avg":
-//               grouped[key][agg.output_column] += current;
-//               break;
-//             case "min":
-//               grouped[key][agg.output_column] = Math.min(
-//                 grouped[key][agg.output_column],
-//                 current
-//               );
-//               break;
-//             case "max":
-//               grouped[key][agg.output_column] = Math.max(
-//                 grouped[key][agg.output_column],
-//                 current
-//               );
-//               break;
-//             case "count":
-//               grouped[key][agg.output_column] = grouped[key].count;
-//               break;
-//           }
-//         }
-//       });
-//     }
-//   });
-
-//   // Calculer les moyennes pour avg
-//   Object.values(grouped).forEach((group) => {
-//     aggregations.forEach((agg) => {
-//       if (agg.function === "avg") {
-//         group[agg.output_column] = group[agg.output_column] / group.count;
-//       }
-//     });
-//     delete group.count;
-//   });
-
-//   return Object.values(grouped);
-// };
-
-// const computeNewColumn = (data, newColumn) => {
-//   return data.map((row) => {
-//     let value;
-//     try {
-//       // Évaluer la formule de manière sécurisée (simplifiée ici)
-//       // Note : Dans une vraie implémentation, utiliser une bibliothèque comme math.js pour éviter les injections
-//       value = evalFormula(row, newColumn.formula);
-//     } catch (error) {
-//       value = null;
-//     }
-//     return { ...row, [newColumn.name]: value };
-//   });
-// };
-
-// const evalFormula = (row, formula) => {
-//   // Simplification pour l'exemple : remplace les noms de colonnes par leurs valeurs
-//   let expression = formula;
-//   Object.keys(row).forEach((key) => {
-//     const value = row[key];
-//     if (typeof value === "number") {
-//       expression = expression.replace(new RegExp(`\\b${key}\\b`, "g"), value);
-//     }
-//   });
-//   return eval(expression); // À remplacer par une solution sécurisée comme math.js
-// };
-
-// Effectuer une analyse sur les données
 const performDataAnalysis = async (
   userId,
   sourceId,
@@ -833,6 +693,32 @@ const computeDescriptiveStats = (data, columns) => {
   return stats;
 };
 
+const detectAnomalies = (data, columns, method, threshold = 3) => {
+  if (method === "zscore") {
+    const anomalies = [];
+    columns.forEach((col) => {
+      const values = data
+        .map((row) => parseFloat(row[col]))
+        .filter((v) => !isNaN(v));
+      if (values.length === 0) return;
+      const mean = math.mean(values);
+      const std = math.std(values);
+      data.forEach((row, i) => {
+        const value = parseFloat(row[col]);
+        if (!isNaN(value)) {
+          const zScore = Math.abs((value - mean) / std);
+          if (zScore > threshold) {
+            anomalies.push({ index: i, column: col, z_score: zScore });
+          }
+        }
+      });
+    });
+    return { anomalies };
+  }
+  throw new Error("Méthode de détection d'anomalies non prise en charge");
+};
+
+// À revoir
 const performPrediction = async (data, features, target, modelType) => {
   if (data.length < 2) {
     throw new Error(
@@ -962,79 +848,7 @@ const performPrediction = async (data, features, target, modelType) => {
   };
 };
 
-// const performPrediction = async (data, features, target, modelType) => {
-//   // Préparer les données
-//   const X = data.map((row) => features.map((f) => parseFloat(row[f]) || 0));
-//   const y = data.map(
-//     (row) => parseFloat(row[target]) || (modelType === "classification" ? 0 : 0)
-//   );
-
-//   // Créer et entraîner un modèle simple
-//   const model = tf.sequential();
-//   model.add(
-//     tf.layers.dense({
-//       units: modelType === "classification" ? 1 : 1,
-//       inputShape: [features.length],
-//     })
-//   );
-//   if (modelType === "classification") {
-//     model.add(tf.layers.activation({ activation: "sigmoid" }));
-//   }
-//   model.compile({
-//     optimizer: "adam",
-//     loss:
-//       modelType === "classification"
-//         ? "binaryCrossentropy"
-//         : "meanSquaredError",
-//     metrics: ["accuracy"],
-//   });
-
-//   const xs = tf.tensor2d(X);
-//   const ys = tf.tensor1d(
-//     y,
-//     modelType === "classification" ? "int32" : "float32"
-//   );
-//   await model.fit(xs, ys, { epochs: 10, verbose: 1 });
-
-//   // Faire des prédictions
-//   const predictions = model.predict(xs).dataSync();
-//   const results = data.map((row, i) => ({
-//     ...row,
-//     prediction:
-//       modelType === "classification"
-//         ? Math.round(predictions[i])
-//         : predictions[i],
-//   }));
-
-//   tf.dispose([xs, ys, model]);
-//   return { data: results, model_metrics: { epochs: 10 } };
-// };
-
-const detectAnomalies = (data, columns, method, threshold = 3) => {
-  if (method === "zscore") {
-    const anomalies = [];
-    columns.forEach((col) => {
-      const values = data
-        .map((row) => parseFloat(row[col]))
-        .filter((v) => !isNaN(v));
-      if (values.length === 0) return;
-      const mean = math.mean(values);
-      const std = math.std(values);
-      data.forEach((row, i) => {
-        const value = parseFloat(row[col]);
-        if (!isNaN(value)) {
-          const zScore = Math.abs((value - mean) / std);
-          if (zScore > threshold) {
-            anomalies.push({ index: i, column: col, z_score: zScore });
-          }
-        }
-      });
-    });
-    return { anomalies };
-  }
-  throw new Error("Méthode de détection d'anomalies non prise en charge");
-};
-
+// À revoir
 const performClustering = async (data, columns, k) => {
   if (k > data.length) {
     throw new Error(
@@ -1407,47 +1221,6 @@ const performClustering = async (data, columns, k) => {
   return { data: result, k };
 };
 
-// const performClustering = async (data, columns, k) => {
-//   // Préparer les données
-//   const X = data.map((row) => columns.map((c) => parseFloat(row[c]) || 0));
-//   const xs = tf.tensor2d(X);
-
-//   // Implémentation simple de k-means avec TensorFlow.js
-//   const centroids = tf.tensor2d(X.slice(0, k));
-//   let assignments;
-//   for (let i = 0; i < 10; i++) {
-//     // Calculer les distances aux centroïdes
-//     const distances = tf.sum(tf.square(tf.sub(xs.expandDims(1), centroids)), 2);
-//     assignments = tf.argMin(distances, 1).dataSync();
-//     // Mettre à jour les centroïdes
-//     const newCentroids = [];
-//     for (let j = 0; j < k; j++) {
-//       const clusterPoints = X.filter((_, idx) => assignments[idx] === j);
-//       if (clusterPoints.length > 0) {
-//         const mean = tf.mean(tf.tensor2d(clusterPoints), 0).dataSync();
-//         newCentroids.push(mean);
-//       } else {
-//         newCentroids.push(centroids.slice([j, 0], [1, -1]).dataSync());
-//       }
-//     }
-//     centroids.dispose();
-//     centroids = tf.tensor2d(newCentroids);
-//   }
-
-//   // Ajouter les clusters aux données
-//   const result = data.map((row, i) => ({
-//     ...row,
-//     cluster: assignments[i],
-//   }));
-
-//   tf.dispose([xs, centroids]);
-//   return { data: result, k };
-// };
-
-// Enregistrer un résultat (graphique, rapport, shapefile, etc.)
-
-// Map des formats aux motifs de MIME types
-
 // Enregistrer un résultat (graphique, rapport, shapefile, etc.)
 const saveResult = async (userId, sourceId, resultType, config, files) => {
   const validResultTypes = ["image", "report", "json", "geojson", "shapefile"];
@@ -1501,13 +1274,6 @@ const saveResult = async (userId, sourceId, resultType, config, files) => {
         }. Types acceptés : ${mimeTypes.join(", ")}`
       );
     }
-    // if (file.size > MAX_FILE_SIZE) {
-    //   throw new Error(
-    //     `Taille de fichier trop grande : ${
-    //       file.originalname
-    //     }. Taille maximale : ${MAX_FILE_SIZE / 1024} Ko`
-    //   );
-    // }
     if (file.size === 0) {
       throw new Error(
         `Fichier vide : ${file.originalname}. Veuillez fournir un fichier valide.`
@@ -1547,11 +1313,6 @@ const saveResult = async (userId, sourceId, resultType, config, files) => {
         `Type de fichier invalide pour un JSON : ${file.originalname}. Un JSON doit être un fichier JSON.`
       );
     }
-    // if (dataset.data_format === "shapefile" && resultType !== "shapefile") {
-    //   throw new Error(
-    //     `Le format des données initiales est shapefile. Le résultat doit être de type shapefile.`
-    //   );
-    // }
     if (dataset.data_format !== "shapefile" && resultType === "shapefile") {
       throw new Error(
         `Le format des données initiales n'est pas shapefile. Le résultat ne peut pas être de type shapefile.`
@@ -1612,12 +1373,6 @@ const saveResult = async (userId, sourceId, resultType, config, files) => {
         dataset.metadata.original_filename
       }_result_${resultType}.zip`;
     } else {
-      // Valider le MIME type pour les autres formats
-      // if (!validateMimeType(file.mimetype, format)) {
-      //   throw new Error(
-      //     `MIME type invalide pour ${format}. Reçu : ${file.mimetype}`
-      //   );
-      // }
       fileBuffer = file.buffer;
       const fileExtension = format === "shapefile" ? "shp" : format;
       filePath = `dataworkspace/results/${userId}/${Date.now()}_${
@@ -1628,7 +1383,6 @@ const saveResult = async (userId, sourceId, resultType, config, files) => {
     throw new Error("Trop de fichiers pour un résultat non-shapefile");
   }
 
-  // Stocker dans MinIO
   await minioClient.putObject(BUCKET_NAME, filePath, fileBuffer);
 
   // Enregistrer dans Results
@@ -1640,15 +1394,6 @@ const saveResult = async (userId, sourceId, resultType, config, files) => {
     format,
     metadata: config || {},
   });
-
-  // Enregistrer l'étape
-  // await ProcessingSteps.create({
-  //   dataset_id: dataset.dataset_id,
-  //   step_type: `result_${resultType}`,
-  //   step_description: `Enregistrement de ${resultType} (format: ${format})`,
-  //   parameters: config || {},
-  //   result_dataset_id: result.result_id,
-  // });
 
   return {
     success: true,
@@ -1663,12 +1408,6 @@ const downloadResult = async (userId, resultId) => {
   // Vérifier le résultat
   const result = await Results.findOne({
     where: { result_id: resultId, user_id: userId },
-    // include: [
-    //   {
-    //     model: Datasets,
-    //     include: [{ model: DataSources, where: { user_id: userId } }],
-    //   },
-    // ],
   });
   if (!result) {
     throw new Error("Résultat non trouvé ou non autorisé");
@@ -1736,18 +1475,6 @@ const submitResult = async (userId, datasetId, resultId, comments) => {
     submission_status: "pending",
     submission_comments: comments || null,
   });
-
-  // Enregistrer l'étape
-  // const targetDatasetId = datasetId || result.dataset_id;
-  // await ProcessingSteps.create({
-  //   dataset_id: targetDatasetId,
-  //   step_type: "submission",
-  //   step_description: `Soumission pour validation (dataset_id: ${
-  //     datasetId || "aucun"
-  //   }, result_id: ${resultId || "aucun"})`,
-  //   parameters: { dataset_id: datasetId, result_id: resultId, comments },
-  //   result_dataset_id: null,
-  // });
 
   return {
     success: true,
@@ -1823,7 +1550,7 @@ const updateSubmission = async (
   } else if (resultId) {
     // Vérifier result_id
     const result = await Results.findOne({
-      where: { result_id: resultId, user_id: userId }, // Utilisation de user_id dans Results
+      where: { result_id: resultId, user_id: userId },
     });
     if (!result) {
       throw new Error("Résultat non trouvé ou non autorisé");
@@ -1838,15 +1565,6 @@ const updateSubmission = async (
     submission_status: "pending",
     submission_comments: comments || submission.submission_comments,
   });
-
-  // Enregistrer l'étape
-  // await ProcessingSteps.create({
-  //   dataset_id: datasetId || submission.dataset_id,
-  //   step_type: "submission_update",
-  //   step_description: `Mise à jour de la soumission ${submissionId}`,
-  //   parameters: { dataset_id: datasetId, result_id: resultId, metadata },
-  //   result_dataset_id: null,
-  // });
 
   return {
     success: true,
@@ -1873,15 +1591,6 @@ const cancelSubmission = async (userId, submissionId) => {
   }
 
   await submission.destroy();
-
-  // Enregistrer l'étape
-  // await ProcessingSteps.create({
-  //   dataset_id: submission.dataset_id,
-  //   step_type: "submission_cancel",
-  //   step_description: `Annulation de la soumission ${submissionId}`,
-  //   parameters: { submission_id: submissionId },
-  //   result_dataset_id: null,
-  // });
 
   return {
     success: true,
@@ -1911,8 +1620,6 @@ const updateSubmissionStatus = async (user, submissionId, status) => {
     throw new Error("Soumission non trouvée");
   }
 
-  // Vérifier si l'utilisateur est un validateur (exemple simplifié)
-
   const userRole = user.role; // Récupérer le rôle de l'utilisateur
   const isValidator = userRole === "validator"; // Vérifier si l'utilisateur est un validateur
 
@@ -1923,15 +1630,6 @@ const updateSubmissionStatus = async (user, submissionId, status) => {
   await submission.update({
     submission_status: status,
   });
-
-  // Enregistrer l'étape
-  // await ProcessingSteps.create({
-  //   dataset_id: submission.dataset_id,
-  //   step_type: "submission_status_update",
-  //   step_description: `Mise à jour du statut de la soumission ${submissionId} à ${status}`,
-  //   parameters: { submission_id: submissionId, status },
-  //   result_dataset_id: null,
-  // });
 
   return {
     success: true,

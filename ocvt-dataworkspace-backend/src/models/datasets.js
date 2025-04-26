@@ -19,39 +19,28 @@ const Datasets = sequelize.define(
       },
     },
     user_id: {
-      type: DataTypes.STRING, // Référence à l'utilisateur (fournie par Authentication Microfrontend)
+      type: DataTypes.STRING,
       allowNull: false,
     },
     dataset_name: {
-      type: DataTypes.STRING, // Nom du jeu de données (texte)
+      type: DataTypes.STRING,
       allowNull: false,
     },
     data_format: {
-      type: DataTypes.ENUM("csv", "excel", "json", "xml", "shapefile"), // Format des données
+      type: DataTypes.ENUM("csv", "excel", "json", "xml", "shapefile"),
       allowNull: false,
     },
     data_content: {
-      type: DataTypes.STRING, // Chemin vers le fichier dans MinIO (texte)
+      type: DataTypes.STRING,
       allowNull: true,
     },
     metadata: {
-      type: DataTypes.JSON, // Métadonnées (JSON)
+      type: DataTypes.JSON,
       allowNull: true,
     },
-    // created_at: {
-    //   type: DataTypes.DATE,
-    //   allowNull: false,
-    //   defaultValue: Sequelize.NOW,
-    // },
-    // updated_at: {
-    //   type: DataTypes.DATE,
-    //   allowNull: false,
-    //   defaultValue: Sequelize.NOW,
-    // },
   },
   {
     tableName: "Datasets",
-    // timestamps: false,
   }
 );
 

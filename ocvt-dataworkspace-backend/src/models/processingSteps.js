@@ -28,35 +28,29 @@ const ProcessingSteps = sequelize.define(
         "prediction",
         "anomaly",
         "clustering"
-      ), // Type de traitement
+      ),
       allowNull: false,
     },
     step_description: {
-      type: DataTypes.TEXT, // Description du traitement (texte)
+      type: DataTypes.TEXT,
       allowNull: true,
     },
     parameters: {
-      type: DataTypes.JSON, // Paramètres du traitement (JSON)
+      type: DataTypes.JSON,
       allowNull: true,
     },
     result_dataset_id: {
       type: DataTypes.INTEGER,
-      allowNull: true, // Clé étrangère optionnelle vers un nouveau Datasets
+      allowNull: true,
       references: {
         model: Datasets,
         key: "dataset_id",
       },
     },
-    // created_at: {
-    //   type: DataTypes.DATE,
-    //   allowNull: false,
-    //   defaultValue: Sequelize.NOW,
-    // },
   },
   {
     tableName: "ProcessingSteps",
     updatedAt: false,
-    // timestamps: false,
   }
 );
 

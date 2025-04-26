@@ -10,11 +10,11 @@ const DataSources = sequelize.define(
       autoIncrement: true,
     },
     user_id: {
-      type: DataTypes.STRING, // Référence à l'utilisateur (fournie par Authentication Microfrontend)
+      type: DataTypes.STRING,
       allowNull: false,
     },
     source_type: {
-      type: DataTypes.ENUM("file", "database", "api"), // Type de source
+      type: DataTypes.ENUM("file", "database", "api"),
       allowNull: false,
     },
     source_name: {
@@ -22,23 +22,12 @@ const DataSources = sequelize.define(
       allowNull: false,
     },
     connection_details: {
-      type: DataTypes.JSON, // Détails de connexion (JSON)
+      type: DataTypes.JSON,
       allowNull: true,
     },
-    // created_at: {
-    //   type: DataTypes.DATE,
-    //   allowNull: false,
-    //   // defaultValue: Sequelize.NOW,
-    // },
-    // updated_at: {
-    //   type: DataTypes.DATE,
-    //   allowNull: false,
-    //   // defaultValue: Sequelize.NOW,
-    // },
   },
   {
     tableName: "DataSources",
-    // timestamps: false, // Géré manuellement via created_at et updated_at
   }
 );
 
