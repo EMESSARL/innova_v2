@@ -4,6 +4,7 @@ const Datasets = require("./datasets");
 const ProcessingSteps = require("./processingSteps");
 const Results = require("./results");
 const Submissions = require("./submissions");
+const SourceTypes = require("./sourceTypes");
 
 (async () => {
   await sequelize.sync({ alter: true, logging: false });
@@ -18,4 +19,5 @@ module.exports = {
   ProcessingSteps,
   Results,
   Submissions,
+  SourceTypes,
 };

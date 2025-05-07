@@ -9,25 +9,86 @@ const upload = multer({
   limits: { fileSize: 100 * 1024 * 1024 },
 }); // Limite à 100 Mo
 
-router.get("/data-sources", authMiddleware, async (req, res) => {
-  const userId = req.user.id;
+router.get(
+  "/data-sources",
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  async (req, res) => {
+    const userId = req.user.id;
 
-  try {
-    const result = await dataworkspaceService.listDataSources(userId);
-    res.status(200).json(result);
-  } catch (error) {
-    if (
-      error.message === "Aucune source de données trouvée pour cet utilisateur"
-    ) {
-      return res.status(404).json({ error: error.message });
+    try {
+      const result = await dataworkspaceService.listDataSources(userId);
+      res.status(200).json(result);
+    } catch (error) {
+      if (
+        error.message ===
+        "Aucune source de données trouvée pour cet utilisateur"
+      ) {
+        return res.status(404).json({ error: error.message });
+      }
+      res.status(500).json({ error: "Erreur serveur : " + error.message });
     }
-    res.status(500).json({ error: "Erreur serveur : " + error.message });
   }
-});
+);
 
+// GET /data-source-types
+router.get(
+  "/data-source-types",
+  authMiddleware,
+  requireRole(["ROLE_ADMIN"]),
+  async (req, res) => {
+    try {
+      const result = await dataworkspaceService.listDataSourceTypes();
+      res.status(200).json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Erreur serveur : " + error.message });
+    }
+  }
+);
+
+// PATCH /data-source-types/:id/status
+router.patch(
+  "/data-source-types/:id/status",
+  authMiddleware,
+  requireRole(["ROLE_ADMIN"]),
+  [
+    check("id").isInt().withMessage("ID du type de source invalide"),
+    check("status")
+      .isIn(["active", "inactive"])
+      .withMessage("Statut invalide. Valeurs acceptées : active, inactive"),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const sourceTypeId = req.params.id;
+    const { status } = req.body;
+
+    try {
+      const result = await dataworkspaceService.updateSourceTypeStatus(
+        sourceTypeId,
+        status
+      );
+      res.status(200).json(result);
+    } catch (error) {
+      if (error.message.includes("Type de source non trouvé")) {
+        return res.status(404).json({ error: error.message });
+      }
+      if (error.message.includes("Statut invalide")) {
+        return res.status(400).json({ error: error.message });
+      }
+      res.status(500).json({ error: "Erreur serveur : " + error.message });
+    }
+  }
+);
+
+// POST /data-sources
 router.post(
   "/data-sources",
   authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
   upload.single("file"),
   [
     check("type")
@@ -37,9 +98,72 @@ router.post(
       ),
     check("name").notEmpty().withMessage("Le nom de la source est requis"),
     check("connection_details")
-      .optional()
-      .isObject()
-      .withMessage("Les détails de connexion doivent être un objet"),
+      .if((value, { req }) => req.body.type !== "file")
+      .notEmpty()
+      .withMessage("Les détails de connexion sont requis pour database et api"),
+    check("connection_details")
+      .if((value, { req }) => req.body.type === "database")
+      .custom((value) => {
+        const details = typeof value === "string" ? JSON.parse(value) : value;
+        if (
+          !details.host ||
+          !details.dialect ||
+          !details.username ||
+          !details.password ||
+          !details.dbname
+        ) {
+          throw new Error(
+            "Tous les champs sont requis pour database : host, dialect, username, password, dbname"
+          );
+        }
+        const validDialects = [
+          "mysql",
+          "postgres",
+          "sqlite",
+          "mariadb",
+          "mongodb",
+        ];
+        if (!validDialects.includes(details.dialect)) {
+          throw new Error(
+            "Dialecte invalide. Valeurs acceptées : mysql, postgres, sqlite, mariadb, mongodb"
+          );
+        }
+        return true;
+      }),
+    check("connection_details")
+      .if((value, { req }) => req.body.type === "api")
+      .custom((value) => {
+        const details = typeof value === "string" ? JSON.parse(value) : value;
+        if (!details.url) {
+          throw new Error("L'URL est requise pour api");
+        }
+        try {
+          new URL(details.url);
+        } catch {
+          throw new Error("L'URL fournie est invalide");
+        }
+        if (details.credentials) {
+          if (
+            !(
+              (details.credentials.username && details.credentials.password) ||
+              details.credentials.api_key
+            )
+          ) {
+            throw new Error(
+              "Les credentials doivent inclure username/password ou api_key"
+            );
+          }
+        }
+        return true;
+      }),
+    check("file")
+      .if((value, { req }) => req.body.type === "file")
+      .custom((value, { req }) => {
+        if (!req.file) {
+          throw new Error("Un fichier est requis pour le type file");
+        }
+        return true;
+      }),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -66,8 +190,12 @@ router.post(
         error.message.includes("Le nom de la source est requis") ||
         error.message.includes("Un fichier est requis") ||
         error.message.includes("Format de fichier non pris en charge") ||
-        error.message.includes("URL et identifiants sont requis") ||
-        error.message.includes("URL est requise")
+        error.message.includes("Les détails de connexion sont requis") ||
+        error.message.includes("Tous les champs sont requis") ||
+        error.message.includes("Dialecte invalide") ||
+        error.message.includes("L'URL est requise") ||
+        error.message.includes("L'URL fournie est invalide") ||
+        error.message.includes("Les credentials doivent inclure")
       ) {
         return res.status(400).json({ error: error.message });
       }
@@ -79,6 +207,7 @@ router.post(
 router.delete(
   "/data-sources/:source_id",
   authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
   [param("source_id").isInt().withMessage("ID de la source invalide")],
   async (req, res) => {
     const errors = validationResult(req);
@@ -107,6 +236,7 @@ router.delete(
 router.get(
   "/data-sources/:source_id/data",
   authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
   [
     param("source_id").isInt().withMessage("ID de la source invalide"),
     query("limit")
@@ -154,6 +284,7 @@ router.get(
 router.post(
   "/data-transformations",
   authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
   [
     check("source_id").isInt().withMessage("ID de la source invalide"),
     check("transformation_type")
@@ -288,6 +419,7 @@ router.post(
 router.post(
   "/data-analyses",
   authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
   [
     check("source_id").isInt().withMessage("ID de la source invalide"),
     check("analysis_type")
@@ -392,7 +524,8 @@ router.post(
 router.post(
   "/results",
   authMiddleware,
-  upload.any(),
+  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  upload.any(), // Accepte plusieurs fichiers
   [
     check("source_id").isInt().withMessage("ID de la source invalide"),
     check("result_type")
@@ -470,6 +603,7 @@ router.post(
 router.get(
   "/results/:id/download",
   authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
   [check("id").isInt().withMessage("ID du résultat invalide")],
   async (req, res) => {
     const errors = validationResult(req);
@@ -498,6 +632,7 @@ router.get(
 router.post(
   "/submissions",
   authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
   [
     check("dataset_id")
       .optional()
@@ -549,9 +684,11 @@ router.post(
   }
 );
 
+// GET /submissions/:id/status
 router.get(
   "/submissions/:id/status",
   authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
   [check("id").isInt().withMessage("ID de la soumission invalide")],
   async (req, res) => {
     const errors = validationResult(req);
@@ -577,9 +714,11 @@ router.get(
   }
 );
 
+// PUT /submissions/:id
 router.put(
   "/submissions/:id",
   authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
   [
     check("id").isInt().withMessage("ID de la soumission invalide"),
     check("dataset_id")
@@ -646,6 +785,7 @@ router.put(
 router.delete(
   "/submissions/:id",
   authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
   [check("id").isInt().withMessage("ID de la soumission invalide")],
   async (req, res) => {
     const errors = validationResult(req);
@@ -673,9 +813,11 @@ router.delete(
   }
 );
 
+// PATCH /submissions/:id/status
 router.patch(
   "/submissions/:id/status",
   authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
   [
     check("id").isInt().withMessage("ID de la soumission invalide"),
     check("status")

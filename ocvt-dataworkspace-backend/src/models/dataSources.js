@@ -18,7 +18,7 @@ const DataSources = sequelize.define(
       allowNull: false,
     },
     source_name: {
-      type: DataTypes.STRING, // Nom descriptif (texte)
+      type: DataTypes.STRING,
       allowNull: false,
     },
     connection_details: {

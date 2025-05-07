@@ -4,6 +4,7 @@ const {
   ProcessingSteps,
   Results,
   Submissions,
+  SourceTypes,
 } = require("../models");
 const minioClient = require("../config/minioClient");
 const axios = require("axios");
@@ -18,12 +19,42 @@ const os = require("os");
 const tf = require("@tensorflow/tfjs-node");
 const math = require("mathjs");
 const AdmZip = require("adm-zip");
+const crypto = require("crypto");
 const {
   streamToBuffer,
   flattenXml,
   handleZippedShapefile,
   validateMimeType,
 } = require("./utils");
+
+const ENCRYPTION_KEY = Buffer.from(process.env.ENCRYPTION_KEY, "hex");
+if (ENCRYPTION_KEY.length !== 32) {
+  throw new Error(
+    "ENCRYPTION_KEY doit être une chaîne hexadécimale de 32 bytes"
+  );
+}
+
+// Chiffrer un texte
+const encrypt = (text) => {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv("aes-256-cbc", ENCRYPTION_KEY, iv);
+  let encrypted = cipher.update(text, "utf8", "hex");
+  encrypted += cipher.final("hex");
+  return {
+    iv: iv.toString("hex"),
+    encrypted: encrypted,
+  };
+};
+
+// Déchiffrer un texte
+const decrypt = (encryptedData) => {
+  const iv = Buffer.from(encryptedData.iv, "hex");
+  const encrypted = Buffer.from(encryptedData.encrypted, "hex");
+  const decipher = crypto.createDecipheriv("aes-256-cbc", ENCRYPTION_KEY, iv);
+  let decrypted = decipher.update(encrypted, "hex", "utf8");
+  decrypted += decipher.final("utf8");
+  return decrypted;
+};
 
 const BUCKET_NAME = process.env.MINIO_BUCKET;
 
@@ -48,6 +79,44 @@ const listDataSources = async (userId) => {
   return { success: true, data: sources };
 };
 
+// Lister les types de sources de données actifs
+const listDataSourceTypes = async () => {
+  const sourceTypes = await SourceTypes.findAll({
+    where: { status: "active" },
+    attributes: ["type_name"],
+  });
+  return {
+    success: true,
+    data: sourceTypes.map((type) => type.type_name),
+    message: "Types de sources récupérés avec succès",
+  };
+};
+
+// Activer ou désactiver un type de source
+const updateSourceTypeStatus = async (sourceTypeId, status) => {
+  const validStatuses = ["active", "inactive"];
+  if (!validStatuses.includes(status)) {
+    throw new Error("Statut invalide. Valeurs acceptées : active, inactive");
+  }
+
+  const sourceType = await SourceTypes.findOne({
+    where: { source_type_id: sourceTypeId },
+  });
+  if (!sourceType) {
+    throw new Error("Type de source non trouvé");
+  }
+
+  await sourceType.update({ status });
+
+  return {
+    success: true,
+    source_type_id: sourceType.source_type_id,
+    type_name: sourceType.type_name,
+    status,
+    message: "Statut du type de source mis à jour",
+  };
+};
+
 // Ajouter une nouvelle source de données
 const addDataSource = async (
   userId,
@@ -69,13 +138,14 @@ const addDataSource = async (
 
   let filePath;
   let dataFormat;
+  let connectionDetailsToStore = connectionDetails || {};
 
-  // Créer d'abord l'entrée dans DataSources pour obtenir source_id
+  // Créer l'entrée dans DataSources
   const newSource = await DataSources.create({
     user_id: userId,
     source_type: sourceType,
     source_name: sourceName,
-    connection_details: null,
+    connection_details: null, // Sera mis à jour après
   });
 
   if (sourceType === "file") {
@@ -103,22 +173,87 @@ const addDataSource = async (
       file.originalname
     }`;
     await minioClient.putObject(BUCKET_NAME, filePath, file.buffer);
+    connectionDetailsToStore = { file_path: filePath };
+  } else if (sourceType === "database") {
+    if (!connectionDetails) {
+      throw new Error(
+        'Les détails de connexion sont requis pour le type "database"'
+      );
+    }
 
-    // Mettre à jour connection_details avec le file_path
-    await newSource.update({ connection_details: { file_path: filePath } });
+    const { host, dialect, username, password, dbname } = connectionDetails;
+    if (!host || !dialect || !username || !password || !dbname) {
+      throw new Error(
+        "Tous les champs sont requis pour une source de type database : host, dialect, username, password, dbname"
+      );
+    }
+
+    const validDialects = ["mysql", "postgres", "sqlite", "mariadb", "mongodb"];
+    if (!validDialects.includes(dialect)) {
+      throw new Error(
+        "Dialecte invalide. Valeurs acceptées : mysql, postgres, sqlite, mariadb, mongodb"
+      );
+    }
+
+    dataFormat = "json";
+    connectionDetailsToStore = {
+      host,
+      dialect,
+      username,
+      password: encrypt(password),
+      dbname,
+    };
+  } else if (sourceType === "api") {
+    if (!connectionDetails) {
+      throw new Error(
+        'Les détails de connexion sont requis pour le type "api"'
+      );
+    }
+
+    const { url, credentials } = connectionDetails;
+    if (!url) {
+      throw new Error("L'URL est requise pour une source de type api");
+    }
+
+    // Valider l'URL
+    try {
+      new URL(url);
+    } catch {
+      throw new Error("L'URL fournie est invalide");
+    }
+
+    // Valider les credentials si fournis
+    if (credentials) {
+      if (
+        !((credentials.username && credentials.password) || credentials.api_key)
+      ) {
+        throw new Error(
+          "Les credentials doivent inclure username/password ou api_key"
+        );
+      }
+    }
+
+    dataFormat = "json";
+    connectionDetailsToStore = {
+      url,
+      credentials: encrypt(JSON.stringify(credentials)) || null,
+    };
   }
 
-  // Créer l'entrée dans Datasets avec le source_id dès le départ
+  // Mettre à jour connection_details
+  await newSource.update({ connection_details: connectionDetailsToStore });
+
+  // Créer l'entrée dans Datasets
   await Datasets.create({
     source_id: newSource.source_id,
     user_id: userId,
     dataset_name: sourceName,
     data_format: dataFormat,
-    data_content: filePath,
-    metadata:
-      sourceType === "file"
-        ? { original_filename: file?.originalname }
-        : { source: sourceType, url: connectionDetails?.url },
+    data_content: filePath || null,
+    metadata: {
+      original_filename: file?.originalname || null,
+      source_type: sourceType,
+    },
   });
 
   return {
@@ -517,6 +652,7 @@ const aggregateData = (data, groupBy, aggregations) => {
   return result;
 };
 
+// Effectuer une analyse sur les données
 const performDataAnalysis = async (
   userId,
   sourceId,
@@ -693,32 +829,6 @@ const computeDescriptiveStats = (data, columns) => {
   return stats;
 };
 
-const detectAnomalies = (data, columns, method, threshold = 3) => {
-  if (method === "zscore") {
-    const anomalies = [];
-    columns.forEach((col) => {
-      const values = data
-        .map((row) => parseFloat(row[col]))
-        .filter((v) => !isNaN(v));
-      if (values.length === 0) return;
-      const mean = math.mean(values);
-      const std = math.std(values);
-      data.forEach((row, i) => {
-        const value = parseFloat(row[col]);
-        if (!isNaN(value)) {
-          const zScore = Math.abs((value - mean) / std);
-          if (zScore > threshold) {
-            anomalies.push({ index: i, column: col, z_score: zScore });
-          }
-        }
-      });
-    });
-    return { anomalies };
-  }
-  throw new Error("Méthode de détection d'anomalies non prise en charge");
-};
-
-// À revoir
 const performPrediction = async (data, features, target, modelType) => {
   if (data.length < 2) {
     throw new Error(
@@ -848,7 +958,79 @@ const performPrediction = async (data, features, target, modelType) => {
   };
 };
 
-// À revoir
+// const performPrediction = async (data, features, target, modelType) => {
+//   // Préparer les données
+//   const X = data.map((row) => features.map((f) => parseFloat(row[f]) || 0));
+//   const y = data.map(
+//     (row) => parseFloat(row[target]) || (modelType === "classification" ? 0 : 0)
+//   );
+
+//   // Créer et entraîner un modèle simple
+//   const model = tf.sequential();
+//   model.add(
+//     tf.layers.dense({
+//       units: modelType === "classification" ? 1 : 1,
+//       inputShape: [features.length],
+//     })
+//   );
+//   if (modelType === "classification") {
+//     model.add(tf.layers.activation({ activation: "sigmoid" }));
+//   }
+//   model.compile({
+//     optimizer: "adam",
+//     loss:
+//       modelType === "classification"
+//         ? "binaryCrossentropy"
+//         : "meanSquaredError",
+//     metrics: ["accuracy"],
+//   });
+
+//   const xs = tf.tensor2d(X);
+//   const ys = tf.tensor1d(
+//     y,
+//     modelType === "classification" ? "int32" : "float32"
+//   );
+//   await model.fit(xs, ys, { epochs: 10, verbose: 1 });
+
+//   // Faire des prédictions
+//   const predictions = model.predict(xs).dataSync();
+//   const results = data.map((row, i) => ({
+//     ...row,
+//     prediction:
+//       modelType === "classification"
+//         ? Math.round(predictions[i])
+//         : predictions[i],
+//   }));
+
+//   tf.dispose([xs, ys, model]);
+//   return { data: results, model_metrics: { epochs: 10 } };
+// };
+
+const detectAnomalies = (data, columns, method, threshold = 3) => {
+  if (method === "zscore") {
+    const anomalies = [];
+    columns.forEach((col) => {
+      const values = data
+        .map((row) => parseFloat(row[col]))
+        .filter((v) => !isNaN(v));
+      if (values.length === 0) return;
+      const mean = math.mean(values);
+      const std = math.std(values);
+      data.forEach((row, i) => {
+        const value = parseFloat(row[col]);
+        if (!isNaN(value)) {
+          const zScore = Math.abs((value - mean) / std);
+          if (zScore > threshold) {
+            anomalies.push({ index: i, column: col, z_score: zScore });
+          }
+        }
+      });
+    });
+    return { anomalies };
+  }
+  throw new Error("Méthode de détection d'anomalies non prise en charge");
+};
+
 const performClustering = async (data, columns, k) => {
   if (k > data.length) {
     throw new Error(
@@ -1550,7 +1732,7 @@ const updateSubmission = async (
   } else if (resultId) {
     // Vérifier result_id
     const result = await Results.findOne({
-      where: { result_id: resultId, user_id: userId },
+      where: { result_id: resultId, user_id: userId }, // Utilisation de user_id dans Results
     });
     if (!result) {
       throw new Error("Résultat non trouvé ou non autorisé");
@@ -1621,7 +1803,7 @@ const updateSubmissionStatus = async (user, submissionId, status) => {
   }
 
   const userRole = user.role; // Récupérer le rôle de l'utilisateur
-  const isValidator = userRole === "validator"; // Vérifier si l'utilisateur est un validateur
+  const isValidator = userRole === "ROLE_VALIDATOR"; // Vérifier si l'utilisateur est un validateur
 
   if (!isValidator) {
     throw new Error("Seuls les validateurs peuvent mettre à jour le statut");
@@ -1652,4 +1834,6 @@ module.exports = {
   updateSubmission,
   cancelSubmission,
   updateSubmissionStatus,
+  listDataSourceTypes,
+  updateSourceTypeStatus,
 };
