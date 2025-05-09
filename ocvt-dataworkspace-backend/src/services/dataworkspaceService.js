@@ -133,7 +133,7 @@ const addDataSource = async (
   }
 
   if (!sourceName || sourceName.trim() === "") {
-    throw new Error("Le nom de la source est requis");
+    throw new Error("La description de la source est requise");
   }
 
   let filePath;

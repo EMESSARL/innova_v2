@@ -96,7 +96,7 @@ router.post(
       .withMessage(
         "Type de source invalide. Valeurs acceptées : file, database, api"
       ),
-    check("name").notEmpty().withMessage("Le nom de la source est requis"),
+    check("description").notEmpty().withMessage("La description de la source est requise"),
     check("connection_details")
       .if((value, { req }) => req.body.type !== "file")
       .notEmpty()
@@ -171,7 +171,7 @@ router.post(
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { type, name, connection_details } = req.body;
+    const { type, description, connection_details } = req.body;
     const file = req.file;
     const userId = req.user.id;
 
@@ -179,7 +179,7 @@ router.post(
       const result = await dataworkspaceService.addDataSource(
         userId,
         type,
-        name,
+        description,
         file,
         connection_details ? JSON.parse(connection_details) : null
       );
@@ -187,7 +187,7 @@ router.post(
     } catch (error) {
       if (
         error.message.includes("Type de source invalide") ||
-        error.message.includes("Le nom de la source est requis") ||
+        error.message.includes("La description de la source est requise") ||
         error.message.includes("Un fichier est requis") ||
         error.message.includes("Format de fichier non pris en charge") ||
         error.message.includes("Les détails de connexion sont requis") ||
