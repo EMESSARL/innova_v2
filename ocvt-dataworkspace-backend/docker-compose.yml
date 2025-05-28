@@ -11,6 +11,15 @@ services:
     networks:
       - app-network
 
+  fastapi-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.fastapi
+    restart: always
+    ports:
+      - "$FASTAPI_PORT:$FASTAPI_PORT"
+    networks:
+      - app-network
 networks:
   app-network:
     driver: bridge

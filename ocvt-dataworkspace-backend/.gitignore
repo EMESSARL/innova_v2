@@ -3,6 +3,10 @@ notes.md
 pgadmin4
 uploads
 
-.env
-.dockerignore
+*.env
+*.dockerignore
 docker-compose.yml.bak
+dataws-env
+*__pycache__
+*.pytest_cache
+backup*

@@ -3,5 +3,5 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --production
 COPY . .
-EXPOSE 41000
+EXPOSE 44000
 CMD ["npm", "start"]

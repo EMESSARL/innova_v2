@@ -27,4 +27,10 @@ const SourceTypes = sequelize.define(
   }
 );
 
+// SourceTypes.getActiveSourceTypes = async () => {
+//   return await SourceTypes.findAll({
+//     where: { status: "active" },
+//   });
+// };
+
 module.exports = SourceTypes;
