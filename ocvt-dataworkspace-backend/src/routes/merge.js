@@ -95,7 +95,8 @@ router.post(
       duplicate_handling,
       suffixes,
     } = req.body;
-    const userId = req.user.id;
+    // const userId = req.user.id;
+    const userId = "user123";
 
     try {
       const result = await mergeService.mergeDatasets(

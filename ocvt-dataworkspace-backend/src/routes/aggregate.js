@@ -128,7 +128,8 @@ router.post(
 
     const { dataset_id, group_by, aggregations, having, output_format } =
       req.body;
-    const userId = req.user.id;
+    // const userId = req.user.id;
+    const userId = "user123";
 
     try {
       const result = await aggregateService.aggregateDataset(

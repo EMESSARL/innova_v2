@@ -220,7 +220,8 @@ router.post(
       metrics,
       output_format,
     } = req.body;
-    const userId = req.user.id;
+    // const userId = req.user.id;
+    const userId = "user123";
 
     try {
       const result = await clusterService.clusterDataset(

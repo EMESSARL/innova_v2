@@ -22,7 +22,8 @@ router.get(
   // authMiddleware,
   // requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
   async (req, res) => {
-    const userId = req.user.id;
+    // const userId = req.user.id;
+    const userId = 'user123';
 
     try {
       const result = await dataworkspaceService.listDataSources(userId);
@@ -183,7 +184,8 @@ router.post(
 
     const { type, description, connection_details } = req.body;
     const file = req.file;
-    const userId = req.user.id;
+    // const userId = req.user.id;
+    const userId = 'user123';
 
     try {
       const result = await dataworkspaceService.addDataSource(
@@ -226,7 +228,8 @@ router.delete(
     }
 
     const { source_id } = req.params;
-    const userId = req.user.id;
+    // const userId = req.user.id;
+    const userId = 'user123';
 
     try {
       const result = await dataworkspaceService.deleteDataSource(
@@ -266,7 +269,8 @@ router.get(
 
     const { source_id } = req.params;
     const { limit = 10, offset = 0 } = req.query;
-    const userId = req.user.id;
+    // const userId = req.user.id;
+    const userId = 'user123';
 
     try {
       const result = await dataworkspaceService.loadDataFromSource(
@@ -359,7 +363,8 @@ router.post(
     }
 
     const { source_id, analysis_type, parameters } = req.body;
-    const userId = req.user.id;
+    // const userId = req.user.id;
+    const userId = 'user123';
 
     try {
       const result = await dataworkspaceService.performDataAnalysis(
@@ -436,7 +441,8 @@ router.post(
     }
 
     const { source_id, result_type, config } = req.body;
-    const userId = req.user.id;
+    // const userId = req.user.id;
+    const userId = 'user123';
     const files = req.files;
 
     try {
@@ -491,7 +497,8 @@ router.get(
     }
 
     const resultId = req.params.id;
-    const userId = req.user.id;
+    // const userId = req.user.id;
+    const userId = 'user123';
 
     try {
       const result = await dataworkspaceService.downloadResult(
@@ -539,7 +546,8 @@ router.post(
     }
 
     const { dataset_id, result_id, comments } = req.body;
-    const userId = req.user.id;
+    // const userId = req.user.id;
+    const userId = 'user123';
 
     try {
       const result = await dataworkspaceService.submitResult(
@@ -576,7 +584,8 @@ router.get(
     }
 
     const submissionId = req.params.id;
-    const userId = req.user.id;
+    // const userId = req.user.id;
+    const userId = 'user123';
 
     try {
       const result = await dataworkspaceService.getSubmissionStatus(
@@ -630,7 +639,8 @@ router.put(
 
     const submissionId = req.params.id;
     const { dataset_id, result_id, comments } = req.body;
-    const userId = req.user.id;
+    // const userId = req.user.id;
+    const userId = 'user123';
 
     try {
       const result = await dataworkspaceService.updateSubmission(
@@ -673,7 +683,8 @@ router.delete(
     }
 
     const submissionId = req.params.id;
-    const userId = req.user.id;
+    // const userId = req.user.id;
+    const userId = 'user123';
 
     try {
       const result = await dataworkspaceService.cancelSubmission(
