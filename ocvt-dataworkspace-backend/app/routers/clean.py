@@ -4,7 +4,7 @@ import pandas as pd
 import io
 import numpy as np
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from app.utils.minio_client import MinioClient
 
 router = APIRouter()
@@ -84,7 +84,7 @@ async def clean_dataset(body: RequestBody) -> dict[str, Any]:
         Dictionnaire avec le chemin du résultat dans MinIO et les métadonnées.
 
     Raises:
-        HTTPException: Si le fichier est introuvable, le format est invalide, ou les actions sont incorrectes.
+        HTTPException: Si le fichier est introuvable, le format est invalide ou les actions sont incorrectes.
     """
     minio_client = MinioClient()
     params = body.parameters
@@ -195,7 +195,7 @@ async def clean_dataset(body: RequestBody) -> dict[str, Any]:
                         detail="Valeur personnalisée requise pour 'custom'",
                     )
                 df[col] = df[col].fillna(action.value)
-            cleaning_summary["missing_handled"][col] = missing_count
+            cleaning_summary["missing_handled"][col] = int(missing_count)
 
     # Nettoyage de texte
     if params.cleaning_actions.text_cleaning:
@@ -276,7 +276,7 @@ async def clean_dataset(body: RequestBody) -> dict[str, Any]:
     # Transformations
     if params.cleaning_actions.transformations:
         for col, transform in params.cleaning_actions.transformations.items():
-            if col not in df.columns and not params.keep_original:
+            if col not in df.columns:
                 raise HTTPException(
                     status_code=400, detail=f"Colonne {col} introuvable"
                 )
@@ -319,11 +319,12 @@ async def clean_dataset(body: RequestBody) -> dict[str, Any]:
             cleaning_summary["transformations_applied"].append(
                 f"{col}:{transform.action}"
             )
-    
+
     # df = df.reset_index(drop=True)
 
     # Générer le chemin de sortie
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    gmt_plus_1 = timezone(timedelta(hours=1))
+    timestamp = datetime.now(gmt_plus_1).strftime("%Y%m%d_%H%M%S")
     result_path = (
         f"dataworkspace/transformed/{user_id}/transformed_{timestamp}.xlsx"
         if params.output_format == "excel"

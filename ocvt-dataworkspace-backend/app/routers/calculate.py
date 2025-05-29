@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException
 import pandas as pd
 import io
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from asteval import Interpreter
 from app.utils.minio_client import MinioClient
 
@@ -145,7 +145,7 @@ async def calculate_column(body: RequestBody) -> dict[str, Any]:
         Dictionnaire avec le chemin du résultat dans MinIO et les métadonnées.
 
     Raises:
-        HTTPException: Si le fichier est introuvable, la formule est invalide, ou les colonnes sont manquantes.
+        HTTPException: Si le fichier est introuvable, la formule est invalide ou les colonnes sont manquantes.
     """
     minio_client = MinioClient()
     params = body.parameters
@@ -233,7 +233,8 @@ async def calculate_column(body: RequestBody) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(e))
 
     # Générer le chemin de sortie
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    gmt_plus_1 = timezone(timedelta(hours=1))
+    timestamp = datetime.now(gmt_plus_1).strftime("%Y%m%d_%H%M%S")
     result_path = (
         f"dataworkspace/transformed/{user_id}/transformed_{timestamp}.xlsx"
         if params.output_format == "excel"

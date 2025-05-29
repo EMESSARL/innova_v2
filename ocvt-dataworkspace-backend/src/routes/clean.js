@@ -14,6 +14,7 @@ router.post(
       .isObject()
       .withMessage("Les actions de nettoyage doivent être un objet"),
     check("keep_original")
+      .optional()
       .isBoolean()
       .withMessage("keep_original doit être un booléen"),
     check("output_format")
@@ -236,7 +237,7 @@ router.post(
       );
       res.status(200).json(result);
     } catch (error) {
-      console.error("Erreur dans la route de nettoyage:", error);
+      // console.error("Erreur dans la route de nettoyage:", error);
       if (
         error.message.includes("Dataset non trouvé") ||
         error.message.includes("Format non supporté") ||

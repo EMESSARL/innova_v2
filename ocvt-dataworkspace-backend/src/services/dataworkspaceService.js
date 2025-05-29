@@ -27,6 +27,18 @@ const {
   validateMimeType,
 } = require("./utils");
 
+// Fonction utilitaire pour générer un timestamp formaté
+const generateTimestamp = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  const seconds = String(now.getSeconds()).padStart(2, "0");
+  return `${year}${month}${day}_${hours}${minutes}${seconds}`;
+};
+
 const ENCRYPTION_KEY = Buffer.from(process.env.ENCRYPTION_KEY, "hex");
 if (ENCRYPTION_KEY.length !== 32) {
   throw new Error(
@@ -153,15 +165,45 @@ const addDataSource = async (
       throw new Error('Un fichier est requis pour le type "file"');
     }
 
-    const validExtensions = ["csv", "xls", "xlsx", "json", "xml", "shp", "zip"];
+    const validExtensions = [
+      "csv",
+      "xls",
+      "xlsx",
+      "json",
+      "xml",
+      "shp",
+      "zip",
+      "pdf",
+    ];
     const fileExtension = file.originalname.split(".").pop().toLowerCase();
     if (!validExtensions.includes(fileExtension)) {
       throw new Error(
-        "Format de fichier non pris en charge. Formats acceptés : csv, xls, xlsx, json, xml, shp, zip"
+        "Format de fichier non pris en charge. Formats acceptés : csv, xls, xlsx, json, xml, shp, zip, pdf"
       );
     }
 
-    if (fileExtension === "xls" || fileExtension === "xlsx") {
+    if (fileExtension === "pdf") {
+      const filePath = `dataworkspace/results/${userId}/result_${generateTimestamp()}.pdf`;
+      await minioClient.putObject(BUCKET_NAME, filePath, file.buffer);
+
+      connectionDetailsToStore = { file_path: filePath };
+      await newSource.update({ connection_details: connectionDetailsToStore });
+
+      const result = await Results.create({
+        user_id: userId,
+        // dataset_id: null, // Pas de dataset_id pour une source PDF directe
+        result_type: "report",
+        file_path: filePath,
+        format: "pdf",
+        metadata: { source_name: sourceName, original_filename: file.originalname },
+      });
+
+      return {
+        success: true,
+        data: { result_id: result.result_id, file_path: filePath },
+        message: "Fichier PDF enregistré comme résultat avec succès",
+      };
+    } else if (fileExtension === "xls" || fileExtension === "xlsx") {
       dataFormat = "excel";
     } else if (fileExtension === "shp" || fileExtension === "zip") {
       dataFormat = "shapefile";
@@ -169,9 +211,7 @@ const addDataSource = async (
       dataFormat = fileExtension;
     }
 
-    filePath = `dataworkspace/sources/${userId}/${Date.now()}_${
-      file.originalname
-    }`;
+    filePath = `dataworkspace/sources/${userId}/source_${generateTimestamp()}.${fileExtension}`;
     await minioClient.putObject(BUCKET_NAME, filePath, file.buffer);
     connectionDetailsToStore = { file_path: filePath };
   } else if (sourceType === "database") {
@@ -515,9 +555,7 @@ const saveResult = async (userId, sourceId, resultType, config, files) => {
       zip.addFile(file.originalname, file.buffer);
     });
     fileBuffer = zip.toBuffer();
-    filePath = `dataworkspace/results/${userId}/${Date.now()}_${
-      dataset.metadata.original_filename
-    }_result_${resultType}.zip`;
+    filePath = `dataworkspace/results/${userId}/result_${generateTimestamp()}.zip`;
   }
   // Cas 2 : Fichier unique (ZIP pour shapefile ou autre format)
   else if (files.length === 1) {
@@ -552,9 +590,7 @@ const saveResult = async (userId, sourceId, resultType, config, files) => {
       // }
       fileBuffer = file.buffer;
       const fileExtension = format === "shapefile" ? "shp" : format;
-      filePath = `dataworkspace/results/${userId}/${Date.now()}_${
-        dataset.metadata.original_filename.split(".")[0]
-      }_result_${resultType}.${fileExtension}`;
+      filePath = `dataworkspace/results/${userId}/result_${generateTimestamp()}.${fileExtension}`;
     }
   } else {
     throw new Error("Trop de fichiers pour un résultat non-shapefile");
@@ -566,7 +602,7 @@ const saveResult = async (userId, sourceId, resultType, config, files) => {
   // Enregistrer dans Results
   const result = await Results.create({
     user_id: userId,
-    dataset_id: dataset.dataset_id,
+    // dataset_id: dataset.dataset_id,
     result_type: resultType,
     file_path: filePath,
     format,

@@ -14,14 +14,14 @@ const Results = sequelize.define(
       type: DataTypes.STRING,
       allowNull: false,
     },
-    dataset_id: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      references: {
-        model: Datasets,
-        key: "dataset_id",
-      },
-    },
+    // dataset_id: {
+    //   type: DataTypes.INTEGER,
+    //   allowNull: false,
+    //   references: {
+    //     model: Datasets,
+    //     key: "dataset_id",
+    //   },
+    // },
     result_type: {
       type: DataTypes.ENUM("image", "report", "json", "geojson", "shapefile"),
       allowNull: false,
@@ -46,7 +46,7 @@ const Results = sequelize.define(
 );
 
 // Relations
-Datasets.hasMany(Results, { foreignKey: "dataset_id" });
-Results.belongsTo(Datasets, { foreignKey: "dataset_id" });
+// Datasets.hasMany(Results, { foreignKey: "dataset_id" });
+// Results.belongsTo(Datasets, { foreignKey: "dataset_id" });
 
 module.exports = Results;

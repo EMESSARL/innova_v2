@@ -3,7 +3,7 @@ import pandas as pd
 import io
 from pydantic import BaseModel, field_validator, ValidationInfo
 from typing import Any
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN, OPTICS
 from sklearn.preprocessing import (
     StandardScaler,
@@ -243,11 +243,13 @@ def preprocess_data(
         ValueError: Si le prétraitement est invalide ou les types de colonnes sont incompatibles.
     """
     df_processed = df.copy()
-    selected_cols = (
-        features if features else df.select_dtypes(include=["float64", "int64"]).columns
-    )
+    # selected_cols = (
+    #     features if features else df.select_dtypes(include=["float64", "int64"]).columns
+    # )
+    selected_cols = features if features else df.columns
     if not selected_cols:
-        raise ValueError("Aucune colonne numérique détectée")
+        # raise ValueError("Aucune colonne numérique détectée")
+        raise ValueError("Aucune colonne détectée")
 
     df_processed = df_processed[selected_cols]
     numeric_cols = df_processed.select_dtypes(include=["float64", "int64"]).columns
@@ -396,7 +398,7 @@ def compute_metrics(
 @router.post("/")
 async def cluster(body: RequestBody) -> dict[str, Any]:
     """
-    Regroupe les données d’un dataset en clusters en utilisant un algorithme de clustering.
+    Regroupe les données d'un dataset en clusters en utilisant un algorithme de clustering.
 
     Args:
         body: Corps de la requête contenant les paramètres et métadonnées.
@@ -405,7 +407,7 @@ async def cluster(body: RequestBody) -> dict[str, Any]:
         Dictionnaire avec le chemin du résultat dans MinIO et les métadonnées.
 
     Raises:
-        HTTPException: Si le fichier est introuvable, l'algorithme est invalide, ou les données sont incompatibles.
+        HTTPException: Si le fichier est introuvable, l'algorithme est invalide ou les données sont incompatibles.
     """
     minio_client = MinioClient()
     params = body.parameters
@@ -509,7 +511,8 @@ async def cluster(body: RequestBody) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(e))
 
     # Générer le chemin de sortie
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    gmt_plus_1 = timezone(timedelta(hours=1))
+    timestamp = datetime.now(gmt_plus_1).strftime("%Y%m%d_%H%M%S")
     result_path = (
         f"dataworkspace/transformed/{user_id}/transformed_{timestamp}.xlsx"
         if params.output_format == "excel"

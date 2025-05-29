@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException
 import pandas as pd
 import io
 from pydantic import BaseModel, field_validator
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from sklearn.ensemble import IsolationForest
 from sklearn.neighbors import LocalOutlierFactor
 from sklearn.svm import OneClassSVM
@@ -331,7 +331,7 @@ def select_best_algorithm(
         hyperparameters: Paramètres spécifiques.
 
     Returns:
-        Tuple contenant le meilleur algorithme, les indicateurs d'anomalie, et les scores.
+        Tuple contenant le meilleur algorithme, les indicateurs d'anomalie et les scores.
     """
     algorithms = ["isolation_forest", "lof", "one_class_svm", "elliptic_envelope"]
     best_algorithm = None
@@ -450,7 +450,8 @@ async def detect_anomalies(body: RequestBody) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(e))
 
     # Générer le chemin de sortie
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    gmt_plus_1 = timezone(timedelta(hours=1))
+    timestamp = datetime.now(gmt_plus_1).strftime("%Y%m%d_%H%M%S")
     result_path = (
         f"dataworkspace/transformed/{user_id}/transformed_{timestamp}.xlsx"
         if params.output_format == "excel"

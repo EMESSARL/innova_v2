@@ -63,10 +63,7 @@ const mergeDatasets = async (
       dataset_name: `Fusion de datasets`,
       data_format: outputFormat,
       data_content: result_path,
-      metadata: {
-        original_dataset_id: dataset.dataset_id,
-        original_filename: dataset.dataset_name,
-      },
+      metadata: {},
     });
 
     // Enregistrer l'étape de traitement
@@ -96,10 +93,10 @@ const mergeDatasets = async (
       message: "Datasets fusionnés avec succès",
     };
   } catch (error) {
-    console.error(
-      "Erreur lors de l'appel à l'API Python de fusion:",
-      error.response?.data || error.message
-    );
+    // console.error(
+    //   "Erreur lors de l'appel à l'API Python de fusion:",
+    //   error.response?.data || error.message
+    // );
     throw new Error(
       error.response?.data?.detail || "Erreur lors de la fusion des datasets"
     );

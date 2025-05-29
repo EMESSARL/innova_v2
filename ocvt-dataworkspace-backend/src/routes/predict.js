@@ -113,7 +113,7 @@ router.post(
       );
       res.status(200).json(result);
     } catch (error) {
-      console.error("Erreur dans la route de prédiction:", error);
+      // console.error("Erreur dans la route de prédiction:", error);
       if (
         error.message.includes("Dataset non trouvé") ||
         error.message.includes("Format non supporté") ||

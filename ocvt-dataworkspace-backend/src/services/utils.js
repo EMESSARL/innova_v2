@@ -68,10 +68,10 @@ async function handleZippedShapefile(fileData) {
       }
       await fs.rmdir(tempDir);
     } catch (cleanupError) {
-      console.error(
-        "Erreur lors du nettoyage des fichiers temporaires:",
-        cleanupError
-      );
+      // console.error(
+      //   "Erreur lors du nettoyage des fichiers temporaires:",
+      //   cleanupError
+      // );
     }
   }
 }

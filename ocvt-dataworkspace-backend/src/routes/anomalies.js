@@ -97,7 +97,7 @@ router.post(
       );
       res.status(200).json(result);
     } catch (error) {
-      console.error("Erreur dans la route de détection d'anomalies:", error);
+      // console.error("Erreur dans la route de détection d'anomalies:", error);
       if (
         error.message.includes("Dataset non trouvé") ||
         error.message.includes("Format non supporté") ||

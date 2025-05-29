@@ -4,7 +4,7 @@ import pandas as pd
 import io
 import re
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from app.utils.minio_client import MinioClient
 
 router = APIRouter()
@@ -184,7 +184,7 @@ async def process_data(body: RequestBody) -> dict[str, Any]:
         Dictionnaire avec le chemin du résultat dans MinIO et les métadonnées.
 
     Raises:
-        HTTPException: Si le fichier est introuvable, le format est invalide, ou les paramètres sont incorrects.
+        HTTPException: Si le fichier est introuvable, le format est invalide ou les paramètres sont incorrects.
     """
     minio_client = MinioClient()
     params = body.parameters
@@ -399,7 +399,8 @@ async def process_data(body: RequestBody) -> dict[str, Any]:
             )
 
     # Générer le chemin de sortie
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    gmt_plus_1 = timezone(timedelta(hours=1))
+    timestamp = datetime.now(gmt_plus_1).strftime("%Y%m%d_%H%M%S")
     result_path = (
         f"dataworkspace/transformed/{user_id}/transformed_{timestamp}.xlsx"
         if params.output_format == "excel"

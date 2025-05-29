@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException
 import pandas as pd
 import io
 from pydantic import BaseModel, field_validator
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from xgboost import XGBRegressor, XGBClassifier
@@ -25,7 +25,6 @@ class LinearRegressionParams(BaseModel):
     """Hyperparamètres pour Linear Regression."""
 
     fit_intercept: bool = True
-    normalize: bool = False
 
 
 class LogisticRegressionParams(BaseModel):
@@ -407,6 +406,14 @@ async def predict(body: RequestBody) -> dict[str, Any]:
     y = df[target_column]
     X = df.drop(columns=[target_column])
 
+    # Vérifier le type de la colonne cible pour la régression
+    if params.prediction_type == "regression":
+        if not pd.api.types.is_numeric_dtype(y):
+            raise HTTPException(
+                status_code=400,
+                detail=f"La colonne cible '{target_column}' doit être numérique pour la régression.",
+            )
+
     # Appliquer le prétraitement
     try:
         preprocessing = params.preprocessing or Preprocessing()
@@ -497,7 +504,8 @@ async def predict(body: RequestBody) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(e))
 
     # Générer le chemin de sortie
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    gmt_plus_1 = timezone(timedelta(hours=1))
+    timestamp = datetime.now(gmt_plus_1).strftime("%Y%m%d_%H%M%S")
     result_path = (
         f"dataworkspace/transformed/{user_id}/transformed_{timestamp}.xlsx"
         if params.output_format == "excel"

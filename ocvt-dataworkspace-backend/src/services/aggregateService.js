@@ -60,7 +60,7 @@ const aggregateDataset = async (
       data_content: result_path,
       metadata: {
         original_dataset_id: dataset.dataset_id,
-        original_filename: dataset.dataset_name,
+        original_filename: dataset.metadata.original_filename,
       },
     });
 
@@ -89,10 +89,10 @@ const aggregateDataset = async (
       message: "Dataset agrégé avec succès",
     };
   } catch (error) {
-    console.error(
-      "Erreur lors de l'appel à l'API Python d'agrégation:",
-      error.response?.data || error.message
-    );
+    // console.error(
+    //   "Erreur lors de l'appel à l'API Python d'agrégation:",
+    //   error.response?.data || error.message
+    // );
     throw new Error(
       error.response?.data?.detail || "Erreur lors de l'agrégation du dataset"
     );

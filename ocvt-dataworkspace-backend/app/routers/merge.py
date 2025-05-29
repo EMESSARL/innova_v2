@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException
 import pandas as pd
 import io
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from app.utils.minio_client import MinioClient
 
 router = APIRouter()
@@ -46,7 +46,7 @@ async def merge_datasets(body: RequestBody) -> dict[str, Any]:
         Dictionnaire avec le chemin du résultat dans MinIO et les métadonnées.
 
     Raises:
-        HTTPException: Si les fichiers sont introuvables, les clés sont incompatibles, ou le format est invalide.
+        HTTPException: Si les fichiers sont introuvables, les clés sont incompatibles ou le format est invalide.
     """
     minio_client = MinioClient()
     params = body.parameters
@@ -141,7 +141,8 @@ async def merge_datasets(body: RequestBody) -> dict[str, Any]:
         cleaning_summary = {"duplicates_removed": initial_rows - len(result_df)}
 
         # Générer le chemin de sortie
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        gmt_plus_1 = timezone(timedelta(hours=1))
+        timestamp = datetime.now(gmt_plus_1).strftime("%Y%m%d_%H%M%S")
         result_path = (
             f"dataworkspace/transformed/{user_id}/transformed_{timestamp}.xlsx"
             if params.output_format == "excel"
