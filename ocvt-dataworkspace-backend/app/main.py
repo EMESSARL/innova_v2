@@ -1,7 +1,16 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from app.routers import merge, clean, process, calculate, predict, anomalies, cluster
 
 app = FastAPI(title="Data Processing API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(merge.router, prefix="/merge-datasets")
 app.include_router(clean.router, prefix="/clean-dataset")

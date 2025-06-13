@@ -50,8 +50,8 @@ const validateCondition = (condition, fieldName) => {
 
 router.post(
   "/",
-  // authMiddleware,
-  // requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   [
     check("dataset_id").isInt().withMessage("ID du dataset invalide"),
     check("group_by")
@@ -128,8 +128,7 @@ router.post(
 
     const { dataset_id, group_by, aggregations, having, output_format } =
       req.body;
-    // const userId = req.user.id;
-    const userId = "user123";
+    const userId = req.user.id;
 
     try {
       const result = await aggregateService.aggregateDataset(

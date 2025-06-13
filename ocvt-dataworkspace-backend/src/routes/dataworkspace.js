@@ -19,11 +19,10 @@ const upload = multer({
 
 router.get(
   "/data-sources",
-  // authMiddleware,
-  // requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   async (req, res) => {
-    // const userId = req.user.id;
-    const userId = "user123";
+    const userId = req.user.id;
 
     try {
       const result = await dataworkspaceService.listDataSources(userId);
@@ -43,8 +42,8 @@ router.get(
 // GET /data-source-types
 router.get(
   "/data-source-types",
-  // authMiddleware,
-  // requireRole(["ROLE_ADMIN"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   async (req, res) => {
     try {
       const result = await dataworkspaceService.listDataSourceTypes();
@@ -58,8 +57,8 @@ router.get(
 // PATCH /data-source-types/:id/status
 router.patch(
   "/data-source-types/:id/status",
-  // authMiddleware,
-  // requireRole(["ROLE_ADMIN"]),
+  authMiddleware,
+  requireRole(["ROLE_ADMIN"]),
   [
     check("id").isInt().withMessage("ID du type de source invalide"),
     check("status")
@@ -96,8 +95,8 @@ router.patch(
 // POST /data-sources
 router.post(
   "/data-sources",
-  // authMiddleware,
-  // requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   upload.single("file"),
   [
     check("type")
@@ -184,8 +183,7 @@ router.post(
 
     const { type, description, connection_details } = req.body;
     const file = req.file;
-    // const userId = req.user.id;
-    const userId = "user123";
+    const userId = req.user.id;
 
     try {
       const result = await dataworkspaceService.addDataSource(
@@ -218,8 +216,8 @@ router.post(
 
 router.delete(
   "/data-sources/:source_id",
-  // authMiddleware,
-  // requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   [param("source_id").isInt().withMessage("ID de la source invalide")],
   async (req, res) => {
     const errors = validationResult(req);
@@ -228,8 +226,7 @@ router.delete(
     }
 
     const { source_id } = req.params;
-    // const userId = req.user.id;
-    const userId = "user123";
+    const userId = req.user.id;
 
     try {
       const result = await dataworkspaceService.deleteDataSource(
@@ -248,8 +245,8 @@ router.delete(
 
 router.get(
   "/data-sources/:source_id/data",
-  // authMiddleware,
-  // requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   [
     param("source_id").isInt().withMessage("ID de la source invalide"),
     query("limit")
@@ -269,8 +266,7 @@ router.get(
 
     const { source_id } = req.params;
     const { limit = 10, offset = 0 } = req.query;
-    // const userId = req.user.id;
-    const userId = "user123";
+    const userId = req.user.id;
 
     try {
       const result = await dataworkspaceService.loadDataFromSource(
@@ -297,8 +293,8 @@ router.get(
 
 router.post(
   "/data-analyses",
-  // authMiddleware,
-  // requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   [
     check("source_id").isInt().withMessage("ID de la source invalide"),
     check("analysis_type")
@@ -363,8 +359,7 @@ router.post(
     }
 
     const { source_id, analysis_type, parameters } = req.body;
-    // const userId = req.user.id;
-    const userId = "user123";
+    const userId = req.user.id;
 
     try {
       const result = await dataworkspaceService.performDataAnalysis(
@@ -403,8 +398,8 @@ router.post(
 
 router.post(
   "/results",
-  // authMiddleware,
-  // requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   upload.any(), // Accepte plusieurs fichiers
   [
     check("source_id").isInt().withMessage("ID de la source invalide"),
@@ -441,8 +436,8 @@ router.post(
     }
 
     const { source_id, result_type, config } = req.body;
-    // const userId = req.user.id;
-    const userId = "user123";
+    const userId = req.user.id;
+
     const files = req.files;
 
     try {
@@ -487,8 +482,8 @@ router.post(
 
 router.get(
   "/results/:id/download",
-  // authMiddleware,
-  // requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   [check("id").isInt().withMessage("ID du résultat invalide")],
   async (req, res) => {
     const errors = validationResult(req);
@@ -497,8 +492,7 @@ router.get(
     }
 
     const resultId = req.params.id;
-    // const userId = req.user.id;
-    const userId = "user123";
+    const userId = req.user.id;
 
     try {
       const result = await dataworkspaceService.downloadResult(
@@ -517,8 +511,8 @@ router.get(
 
 router.post(
   "/submissions",
-  // authMiddleware,
-  // requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   [
     check("dataset_id")
       .optional()
@@ -546,8 +540,7 @@ router.post(
     }
 
     const { dataset_id, result_id, comments } = req.body;
-    // const userId = req.user.id;
-    const userId = "user123";
+    const userId = req.user.id;
 
     try {
       const result = await dataworkspaceService.submitResult(
@@ -574,8 +567,8 @@ router.post(
 // GET /submissions/:id/status
 router.get(
   "/submissions/:id/status",
-  // authMiddleware,
-  // requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   [check("id").isInt().withMessage("ID de la soumission invalide")],
   async (req, res) => {
     const errors = validationResult(req);
@@ -584,8 +577,7 @@ router.get(
     }
 
     const submissionId = req.params.id;
-    // const userId = req.user.id;
-    const userId = "user123";
+    const userId = req.user.id;
 
     try {
       const result = await dataworkspaceService.getSubmissionStatus(
@@ -605,8 +597,8 @@ router.get(
 // PUT /submissions/:id
 router.put(
   "/submissions/:id",
-  // authMiddleware,
-  // requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   [
     check("id").isInt().withMessage("ID de la soumission invalide"),
     check("dataset_id")
@@ -639,8 +631,7 @@ router.put(
 
     const submissionId = req.params.id;
     const { dataset_id, result_id, comments } = req.body;
-    // const userId = req.user.id;
-    const userId = "user123";
+    const userId = req.user.id;
 
     try {
       const result = await dataworkspaceService.updateSubmission(
@@ -673,8 +664,8 @@ router.put(
 // DELETE /submissions/:id
 router.delete(
   "/submissions/:id",
-  // authMiddleware,
-  // requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   [check("id").isInt().withMessage("ID de la soumission invalide")],
   async (req, res) => {
     const errors = validationResult(req);
@@ -683,8 +674,7 @@ router.delete(
     }
 
     const submissionId = req.params.id;
-    // const userId = req.user.id;
-    const userId = "user123";
+    const userId = req.user.id;
 
     try {
       const result = await dataworkspaceService.cancelSubmission(
@@ -706,8 +696,8 @@ router.delete(
 // PATCH /submissions/:id/status
 router.patch(
   "/submissions/:id/status",
-  // authMiddleware,
-  // requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   [
     check("id").isInt().withMessage("ID de la soumission invalide"),
     check("status")

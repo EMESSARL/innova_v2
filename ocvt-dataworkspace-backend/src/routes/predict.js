@@ -6,8 +6,8 @@ const predictService = require("../services/predictService");
 
 router.post(
   "/",
-  // authMiddleware,
-  // requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   [
     check("dataset_id").isInt().withMessage("ID du dataset invalide"),
     check("target_column")
@@ -95,8 +95,7 @@ router.post(
       confidence,
       output_format,
     } = req.body;
-    // const userId = req.user.id;
-    const userId = "user123";
+    const userId = req.user.id;
 
     try {
       const result = await predictService.predictDataset(

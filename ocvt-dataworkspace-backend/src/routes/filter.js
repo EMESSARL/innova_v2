@@ -92,8 +92,8 @@ const validateNestedConditions = (nestedConditions, fieldName) => {
 
 router.post(
   "/",
-  // authMiddleware,
-  // requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   [
     check("dataset_id").isInt().withMessage("ID du dataset invalide"),
     check("output_format")
@@ -130,8 +130,7 @@ router.post(
 
     const { dataset_id, conditions, nested_conditions, output_format } =
       req.body;
-    // const userId = req.user.id;
-    const userId = "user123";
+    const userId = req.user.id;
 
     try {
       const result = await filterService.filterDataset(

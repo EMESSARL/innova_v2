@@ -6,8 +6,8 @@ const calculateService = require("../services/calculateService");
 
 router.post(
   "/",
-  // authMiddleware,
-  // requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   [
     check("dataset_id").isInt().withMessage("ID du dataset invalide"),
     check("new_column_name")
@@ -63,8 +63,7 @@ router.post(
       overwrite,
       output_format,
     } = req.body;
-    // const userId = req.user.id;
-    const userId = "user123";
+    const userId = req.user.id;
 
     try {
       const result = await calculateService.calculateColumn(

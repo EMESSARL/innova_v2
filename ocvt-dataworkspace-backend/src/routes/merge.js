@@ -6,8 +6,8 @@ const mergeService = require("../services/mergeService");
 
 router.post(
   "/",
-  // authMiddleware,
-  // requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   [
     check("datasets")
       .isArray()
@@ -95,8 +95,7 @@ router.post(
       duplicate_handling,
       suffixes,
     } = req.body;
-    // const userId = req.user.id;
-    const userId = "user123";
+    const userId = req.user.id;
 
     try {
       const result = await mergeService.mergeDatasets(

@@ -6,8 +6,8 @@ const cleanService = require("../services/cleanService");
 
 router.post(
   "/",
-  // authMiddleware,
-  // requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   [
     check("dataset_id").isInt().withMessage("ID du dataset invalide"),
     check("cleaning_actions")
@@ -224,8 +224,7 @@ router.post(
 
     const { dataset_id, cleaning_actions, keep_original, output_format } =
       req.body;
-    // const userId = req.user.id;
-    const userId = "user123";
+    const userId = req.user.id;
 
     try {
       const result = await cleanService.cleanDataset(
