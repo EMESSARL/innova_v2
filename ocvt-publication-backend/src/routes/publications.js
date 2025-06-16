@@ -28,7 +28,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 router.post(
   "/publication",
   authMiddleware,
-  requireRole(["validator", "admin"]),
+  requireRole(["ROLE_VALIDATOR", "ROLE_ADMIN"]),
   [
     body("format")
       .isIn(["pdf", "csv", "excel", "shapefile"])
@@ -72,7 +72,7 @@ router.post(
 router.get(
   "/publication/:id",
   authMiddleware,
-  requireRole(["validator", "admin"]),
+  requireRole(["ROLE_VALIDATOR", "ROLE_ADMIN"]),
   [param("id").isInt().withMessage("ID invalide")],
   async (req, res) => {
     const errors = validationResult(req);
@@ -100,7 +100,7 @@ router.get(
 router.get(
   "/publication",
   authMiddleware,
-  requireRole(["validator", "admin"]),
+  requireRole(["ROLE_VALIDATOR", "ROLE_ADMIN"]),
   [
     query("domain_id").optional().isInt().withMessage("Domaine invalide"),
     query("status").optional().isString().withMessage("Statut invalide"),
@@ -135,7 +135,7 @@ router.get(
 router.put(
   "/publication/:id",
   authMiddleware,
-  requireRole(["admin"]),
+  requireRole(["ROLE_ADMIN"]),
   [
     param("id").isInt().withMessage("ID invalide"),
     body("metadata.title")
@@ -181,7 +181,7 @@ router.put(
 router.delete(
   "/publication/:id",
   authMiddleware,
-  requireRole(["admin"]),
+  requireRole(["ROLE_ADMIN"]),
   [param("id").isInt().withMessage("ID invalide")],
   async (req, res) => {
     const errors = validationResult(req);
@@ -207,12 +207,12 @@ router.delete(
   }
 );
 
-// POST /publication/:id/files
+// POST /publication/{id}/files
 // Ne sera pas utilisée en production.
 router.post(
   "/publication/:id/files",
   authMiddleware,
-  requireRole(["validator", "admin"]),
+  requireRole(["ROLE_VALIDATOR", "ROLE_ADMIN"]),
   upload.single("file"),
   [param("id").isInt().withMessage("ID invalide")],
   async (req, res) => {
@@ -245,7 +245,7 @@ router.post(
 router.get(
   "/publication/:id/download",
   authMiddleware,
-  requireRole(["validator", "admin"]),
+  requireRole(["ROLE_VALIDATOR", "ROLE_ADMIN"]),
   [param("id").isInt().withMessage("ID invalide")],
   async (req, res) => {
     const errors = validationResult(req);
@@ -287,7 +287,7 @@ router.get(
 router.get(
   "/publication/:id/view",
   authMiddleware,
-  requireRole(["validator", "admin"]),
+  requireRole(["ROLE_VALIDATOR", "ROLE_ADMIN"]),
   [param("id").isInt().withMessage("ID invalide")],
   async (req, res) => {
     const errors = validationResult(req);
@@ -317,12 +317,12 @@ router.get(
   }
 );
 
-// DELETE /publication/:id/files
+// DELETE /publication/{id}/files
 // Ne sera pas utilisée en production.
 router.delete(
   "/publication/:id/files",
   authMiddleware,
-  requireRole(["admin"]),
+  requireRole(["ROLE_ADMIN"]),
   [param("id").isInt().withMessage("ID invalide")],
   async (req, res) => {
     const errors = validationResult(req);
@@ -354,7 +354,7 @@ router.delete(
 router.get(
   "/publication/get/domains",
   authMiddleware,
-  requireRole(["validator", "admin"]),
+  requireRole(["ROLE_VALIDATOR", "ROLE_ADMIN"]),
   async (req, res) => {
     try {
       const domains = await listDomains();
@@ -371,7 +371,7 @@ router.get(
 router.get(
   "/publication/get/subdomains",
   authMiddleware,
-  requireRole(["validator", "admin"]),
+  requireRole(["ROLE_VALIDATOR", "ROLE_ADMIN"]),
   [query("domain_id").optional().isInt().withMessage("Domaine invalide")],
   async (req, res) => {
     const errors = validationResult(req);
@@ -398,7 +398,7 @@ router.get(
 router.get(
   "/publication/:id/permissions",
   authMiddleware,
-  requireRole(["validator", "admin"]),
+  requireRole(["ROLE_VALIDATOR", "ROLE_ADMIN"]),
   [param("id").isInt().withMessage("ID invalide")],
   async (req, res) => {
     const errors = validationResult(req);
@@ -427,7 +427,7 @@ router.get(
 router.get(
   "/publication/:id/status",
   authMiddleware,
-  requireRole(["validator", "admin"]),
+  requireRole(["ROLE_VALIDATOR", "ROLE_ADMIN"]),
   [param("id").isInt().withMessage("ID invalide")],
   async (req, res) => {
     const errors = validationResult(req);
@@ -454,6 +454,8 @@ router.get(
 // GET /publication/get/public
 router.get(
   "/publication/get/public",
+  authMiddleware,
+  requireRole(["ROLE_PUBLIC_USER"]),
   [
     query("domain_id").optional().isInt().withMessage("Domaine invalide"),
     query("sub_domain_id")
@@ -492,6 +494,8 @@ router.get(
 // GET /publication/get/public/:id
 router.get(
   "/publication/get/public/:id",
+  authMiddleware,
+  requireRole(["ROLE_PUBLIC_USER"]),
   [param("id").isInt().withMessage("ID invalide")],
   async (req, res) => {
     const errors = validationResult(req);
@@ -518,6 +522,8 @@ router.get(
 // GET /publication/public/:id/download
 router.get(
   "/publication/public/:id/download",
+  authMiddleware,
+  requireRole(["ROLE_PUBLIC_USER"]),
   [param("id").isInt().withMessage("ID invalide")],
   async (req, res) => {
     const errors = validationResult(req);
