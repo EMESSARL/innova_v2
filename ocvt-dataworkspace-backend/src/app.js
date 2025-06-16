@@ -3,8 +3,8 @@ const cors = require("cors");
 const dataworkspaceRoutes = require("./routes/dataworkspace");
 
 const app = express();
-app.use(cors());
 
+app.use(cors());
 app.use(express.json());
 app.use("/api/dataworkspace", dataworkspaceRoutes);
 

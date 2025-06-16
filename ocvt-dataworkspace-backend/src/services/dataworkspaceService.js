@@ -1,30 +1,21 @@
 const {
   DataSources,
   Datasets,
-  ProcessingSteps,
   Results,
   Submissions,
   SourceTypes,
 } = require("../models");
 const minioClient = require("../config/minioClient");
-const axios = require("axios");
 const Papa = require("papaparse");
 const XLSX = require("xlsx");
 const xml2js = require("xml2js");
 const shapefile = require("shapefile");
-const JSZip = require("jszip");
-const fs = require("fs").promises;
-const path = require("path");
-const os = require("os");
-const tf = require("@tensorflow/tfjs-node");
-const math = require("mathjs");
 const AdmZip = require("adm-zip");
 const crypto = require("crypto");
 const {
   streamToBuffer,
   flattenXml,
   handleZippedShapefile,
-  validateMimeType,
 } = require("./utils");
 
 // Fonction utilitaire pour générer un timestamp formaté
@@ -881,8 +872,8 @@ const updateSubmissionStatus = async (user, submissionId, status) => {
 
   // Vérifier si l'utilisateur est un validateur (exemple simplifié)
 
-  const userRole = user.role; // Récupérer le rôle de l'utilisateur
-  const isValidator = userRole === "ROLE_VALIDATOR"; // Vérifier si l'utilisateur est un validateur
+  const userRoles = user.roles; // Récupérer le rôle de l'utilisateur
+  const isValidator = userRoles.includes("ROLE_VALIDATOR"); // Vérifier si l'utilisateur est un validateur
 
   if (!isValidator) {
     throw new Error("Seuls les validateurs peuvent mettre à jour le statut");
