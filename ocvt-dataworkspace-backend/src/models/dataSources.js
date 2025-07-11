@@ -21,24 +21,21 @@ const DataSources = sequelize.define(
       type: DataTypes.STRING, // Nom descriptif (texte)
       allowNull: false,
     },
-    connection_details: {
-      type: DataTypes.JSON, // Détails de connexion (JSON)
+    metadata: {
+      type: DataTypes.JSONB, // Détails de connexion (JSONB)
       allowNull: true,
     },
-    // created_at: {
-    //   type: DataTypes.DATE,
-    //   allowNull: false,
-    //   // defaultValue: Sequelize.NOW,
-    // },
-    // updated_at: {
-    //   type: DataTypes.DATE,
-    //   allowNull: false,
-    //   // defaultValue: Sequelize.NOW,
-    // },
+    is_final: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
   },
   {
     tableName: "DataSources",
-    // timestamps: false, // Géré manuellement via created_at et updated_at
+    timestamps: true, // Géré automatiquement par Sequelize
+    createdAt: "created_at",
+    updatedAt: "updated_at",
   }
 );
 

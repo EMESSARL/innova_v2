@@ -1,15 +1,15 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/db");
 
-const SourceTypes = sequelize.define(
-  "SourceTypes",
+const SupportedFileExtensions = sequelize.define(
+  "SupportedFileExtensions",
   {
-    source_type_id: {
+    file_id: {
       type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true,
     },
-    type_name: {
+    file_extension: {
       type: DataTypes.STRING,
       allowNull: false,
       unique: true,
@@ -21,16 +21,10 @@ const SourceTypes = sequelize.define(
     },
   },
   {
-    tableName: "SourceTypes",
+    tableName: "SupportedFileExtensions",
     createdAt: false,
     updatedAt: false,
   }
 );
 
-// SourceTypes.getActiveSourceTypes = async () => {
-//   return await SourceTypes.findAll({
-//     where: { status: "active" },
-//   });
-// };
-
-module.exports = SourceTypes;
+module.exports = SupportedFileExtensions;

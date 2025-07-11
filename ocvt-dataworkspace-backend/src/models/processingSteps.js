@@ -1,6 +1,6 @@
 const { Sequelize, DataTypes } = require("sequelize");
 const sequelize = require("../config/db");
-const Datasets = require("./datasets");
+const ProcessingStates = require("./ProcessingStates");
 
 const ProcessingSteps = sequelize.define(
   "ProcessingSteps",
@@ -14,8 +14,8 @@ const ProcessingSteps = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: false,
       references: {
-        model: Datasets,
-        key: "dataset_id",
+        model: ProcessingStates,
+        key: "state_id",
       },
     },
     step_type: {
@@ -43,8 +43,8 @@ const ProcessingSteps = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: true, // Clé étrangère optionnelle vers un nouveau Datasets
       references: {
-        model: Datasets,
-        key: "dataset_id",
+        model: ProcessingStates,
+        key: "state_id",
       },
     },
     // created_at: {
@@ -61,17 +61,17 @@ const ProcessingSteps = sequelize.define(
 );
 
 // Relations
-Datasets.hasMany(ProcessingSteps, { foreignKey: "dataset_id" });
-ProcessingSteps.belongsTo(Datasets, { foreignKey: "dataset_id" });
+ProcessingStates.hasMany(ProcessingSteps, { foreignKey: "dataset_id" });
+ProcessingSteps.belongsTo(ProcessingStates, { foreignKey: "dataset_id" });
 
-// Relation optionnelle avec un nouveau dataset résultant
-Datasets.hasMany(ProcessingSteps, {
+// Relation optionnelle avec un nouvel état résultant
+ProcessingStates.hasMany(ProcessingSteps, {
   foreignKey: "result_dataset_id",
   as: "ResultSteps",
 });
-ProcessingSteps.belongsTo(Datasets, {
+ProcessingSteps.belongsTo(ProcessingStates, {
   foreignKey: "result_dataset_id",
-  as: "ResultDataset",
+  as: "ResultState",
 });
 
 module.exports = ProcessingSteps;

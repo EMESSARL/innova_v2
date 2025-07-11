@@ -1,33 +1,39 @@
 const axios = require("axios");
-const { ProcessingSteps, Datasets, DataSources } = require("../models");
+const { NonFinalSources, ProcessingStates } = require("../models");
 
 const PYTHON_API_URL = process.env.PYTHON_API_URL;
 
 const mergeDatasets = async (
   userId,
-  datasetsToMerge,
+  nonFinalSourceIds, // array of non_final_source_id
   keyMappings,
   mergeType,
   outputFormat,
   duplicateHandling,
   suffixes
 ) => {
+  // Récupérer les états courants de chaque source à fusionner
   const filesInfo = [];
-  for (const ds of datasetsToMerge) {
-    const dataset = await Datasets.findOne({
-      where: { dataset_id: ds.dataset_id },
-      include: [{ model: DataSources, where: { user_id: userId } }],
+  for (const sourceId of nonFinalSourceIds) {
+    const source = await NonFinalSources.findOne({
+      where: { non_final_source_id: sourceId, user_id: userId },
     });
-
-    if (!dataset) {
+    if (!source) {
       throw new Error(
-        `Dataset avec ID ${ds.dataset_id} non trouvé ou non autorisé`
+        `Source non-finale avec ID ${sourceId} non trouvée ou non autorisée`
       );
     }
+    const state = await ProcessingStates.findOne({
+      where: { non_final_source_id: sourceId, is_current: true },
+      order: [["created_at", "DESC"]],
+    });
+    if (!state) {
+      throw new Error(`Aucun état courant trouvé pour la source ${sourceId}`);
+    }
     filesInfo.push({
-      dataset_id: dataset.dataset_id,
-      path: dataset.data_content,
-      format: dataset.data_format,
+      state_id: state.state_id,
+      path: state.file_path,
+      format: state.file_format,
     });
   }
 
@@ -38,7 +44,7 @@ const mergeDatasets = async (
 
   const requestBody = {
     parameters: {
-      datasets: datasetsToMerge,
+      sources: nonFinalSourceIds,
       key_mappings: keyMappings,
       merge_type: mergeType,
       output_format: outputFormat,
@@ -53,52 +59,53 @@ const mergeDatasets = async (
       `${PYTHON_API_URL}/merge-datasets/`,
       requestBody
     );
-
     const { result_path, metadata: resultMetadata } = response.data;
 
-    // Créer un nouveau dataset pour le résultat de la fusion
-    const newDataset = await Datasets.create({
-      source_id: datasetsToMerge[0].dataset_id, // Utiliser le premier dataset comme source
-      user_id: userId,
-      dataset_name: `Fusion de datasets`,
-      data_format: outputFormat,
-      data_content: result_path,
-      metadata: {},
-    });
+    // Marquer tous les anciens états comme non courants
+    for (const sourceId of nonFinalSourceIds) {
+      const prev = await ProcessingStates.findOne({
+        where: { non_final_source_id: sourceId, is_current: true },
+        order: [["created_at", "DESC"]],
+      });
+      if (prev) await prev.update({ is_current: false });
+    }
 
-    // Enregistrer l'étape de traitement
-    await ProcessingSteps.create({
-      dataset_id: datasetsToMerge[0].dataset_id, // Associer au premier dataset fusionné
-      step_type: "merge",
-      step_description: `Fusion de datasets (${mergeType})`,
-      parameters: {
-        datasets: datasetsToMerge,
+    // Créer un nouvel état de traitement pour la première source (pivot)
+    const pivotSourceId = nonFinalSourceIds[0];
+    const prevPivot = await ProcessingStates.findOne({
+      where: { non_final_source_id: pivotSourceId },
+      order: [["created_at", "DESC"]],
+    });
+    const newState = await ProcessingStates.create({
+      non_final_source_id: pivotSourceId,
+      parent_state_id: prevPivot ? prevPivot.state_id : null,
+      version: prevPivot ? prevPivot.version + 1 : 1,
+      is_current: true,
+      file_path: result_path,
+      file_format: outputFormat,
+      transformation_type: "merge",
+      transformation_parameters: {
+        sources: nonFinalSourceIds,
         key_mappings: keyMappings,
         merge_type: mergeType,
         duplicate_handling: duplicateHandling,
         suffixes: suffixes,
       },
-      result_dataset_id: newDataset.dataset_id,
     });
 
     return {
       success: true,
       data: {
-        dataset_id: newDataset.dataset_id,
-        dataset_name: newDataset.dataset_name,
+        state_id: newState.state_id,
         file_path: result_path,
         merge_type: resultMetadata.merge_type,
         cleaning_summary: resultMetadata.cleaning_summary,
       },
-      message: "Datasets fusionnés avec succès",
+      message: "Fusion effectuée avec succès",
     };
   } catch (error) {
-    // console.error(
-    //   "Erreur lors de l'appel à l'API Python de fusion:",
-    //   error.response?.data || error.message
-    // );
     throw new Error(
-      error.response?.data?.detail || "Erreur lors de la fusion des datasets"
+      error.response?.data?.detail || "Erreur lors de la fusion des sources"
     );
   }
 };

@@ -1,9 +1,12 @@
 const {
-  DataSources,
-  Datasets,
-  Results,
+  FinalResults,
+  NonFinalSources,
+  ProcessingStates,
   Submissions,
   SourceTypes,
+  SupportedFileExtensions,
+  SupportedDatabaseTypes,
+  SupportedCharts,
 } = require("../models");
 const minioClient = require("../config/minioClient");
 const Papa = require("papaparse");
@@ -58,28 +61,89 @@ const decrypt = (encryptedData) => {
   decrypted += decipher.final("utf8");
   return decrypted;
 };
+// Fonction utilitaire pour valider les noms de table/colonne
+const isValidDbIdentifier = (name) => {
+  // Permet les lettres, chiffres et underscores. Empêche les caractères spéciaux qui pourraient être utilisés pour l'injection.
+  return /^[a-zA-Z0-9_]+$/.test(name);
+};
 
 const BUCKET_NAME = process.env.MINIO_BUCKET;
 
-// Lister les sources de données de l'utilisateur
+// Lister les sources de données de l'utilisateur (nouvelle version)
 const listDataSources = async (userId) => {
-  const sources = await DataSources.findAll({
+  // Récupérer les sources finales
+  const finalResults = await FinalResults.findAll({
     where: { user_id: userId },
     attributes: [
-      "source_id",
-      "source_type",
-      "source_name",
-      "connection_details",
+      "final_result_id",
+      ["result_type", "source_type"],
+      ["result_name", "source_name"],
+      "metadata",
       "created_at",
       "updated_at",
     ],
   });
 
-  if (!sources || sources.length === 0) {
+  // Récupérer les sources non-finales
+  const nonFinalSources = await NonFinalSources.findAll({
+    where: { user_id: userId },
+    attributes: [
+      "non_final_source_id",
+      "source_type",
+      "source_name",
+      "metadata",
+      "created_at",
+      "updated_at",
+    ],
+    include: [
+      {
+        model: ProcessingStates,
+        as: "ProcessingStates",
+        where: { is_current: true },
+        required: false,
+        attributes: [
+          "state_id",
+          "version",
+          "file_path",
+          "file_format",
+          "transformation_type",
+          "transformation_parameters",
+          "created_at",
+          "updated_at",
+        ],
+      },
+    ],
+  });
+
+  // Formater la réponse pour regrouper les deux types
+  const formattedFinals = finalResults.map((f) => ({
+    type: "final",
+    id: f.final_result_id,
+    source_type: f.get("source_type"),
+    source_name: f.get("source_name"),
+    metadata: f.metadata,
+    created_at: f.created_at,
+    updated_at: f.updated_at,
+  }));
+  const formattedNonFinals = nonFinalSources.map((nf) => ({
+    type: "non_final",
+    id: nf.non_final_source_id,
+    source_type: nf.source_type,
+    source_name: nf.source_name,
+    metadata: nf.metadata,
+    created_at: nf.created_at,
+    updated_at: nf.updated_at,
+    current_state:
+      nf.ProcessingStates && nf.ProcessingStates.length > 0
+        ? nf.ProcessingStates[0]
+        : null,
+  }));
+
+  const allSources = [...formattedFinals, ...formattedNonFinals];
+  if (allSources.length === 0) {
     throw new Error("Aucune source de données trouvée pour cet utilisateur");
   }
-
-  return { success: true, data: sources };
+  return { success: true, data: allSources };
 };
 
 // Lister les types de sources de données actifs
@@ -126,7 +190,8 @@ const addDataSource = async (
   sourceType,
   sourceName,
   file,
-  connectionDetails
+  metadata,
+  isFinal = false
 ) => {
   const validSourceTypes = ["file", "database", "api"];
   if (!validSourceTypes.includes(sourceType)) {
@@ -134,215 +199,401 @@ const addDataSource = async (
       "Type de source invalide. Valeurs acceptées : file, database, api"
     );
   }
-
   if (!sourceName || sourceName.trim() === "") {
     throw new Error("La description de la source est requise");
   }
 
   let filePath;
-  let dataFormat;
-  let connectionDetailsToStore = connectionDetails || {};
+  let fileFormat;
+  let metadataToStore = metadata || {};
 
-  // Créer l'entrée dans DataSources
-  const newSource = await DataSources.create({
-    user_id: userId,
-    source_type: sourceType,
-    source_name: sourceName,
-    connection_details: null, // Sera mis à jour après
-  });
-
-  if (sourceType === "file") {
-    if (!file) {
-      throw new Error('Un fichier est requis pour le type "file"');
-    }
-
-    const validExtensions = [
-      "csv",
-      "xls",
-      "xlsx",
-      "json",
-      "xml",
-      "shp",
-      "zip",
-      "pdf",
-    ];
-    const fileExtension = file.originalname.split(".").pop().toLowerCase();
-    if (!validExtensions.includes(fileExtension)) {
-      throw new Error(
-        "Format de fichier non pris en charge. Formats acceptés : csv, xls, xlsx, json, xml, shp, zip, pdf"
-      );
-    }
-
-    if (fileExtension === "pdf") {
-      const filePath = `dataworkspace/results/${userId}/result_${generateTimestamp()}.pdf`;
-      await minioClient.putObject(BUCKET_NAME, filePath, file.buffer);
-
-      connectionDetailsToStore = { file_path: filePath };
-      await newSource.update({ connection_details: connectionDetailsToStore });
-
-      const result = await Results.create({
-        user_id: userId,
-        // dataset_id: null, // Pas de dataset_id pour une source PDF directe
-        result_type: "report",
-        file_path: filePath,
-        format: "pdf",
-        metadata: { source_name: sourceName, original_filename: file.originalname },
-      });
-
-      return {
-        success: true,
-        data: { result_id: result.result_id, file_path: filePath },
-        message: "Fichier PDF enregistré comme résultat avec succès",
-      };
-    } else if (fileExtension === "xls" || fileExtension === "xlsx") {
-      dataFormat = "excel";
-    } else if (fileExtension === "shp" || fileExtension === "zip") {
-      dataFormat = "shapefile";
-    } else {
-      dataFormat = fileExtension;
-    }
-
-    filePath = `dataworkspace/sources/${userId}/source_${generateTimestamp()}.${fileExtension}`;
-    await minioClient.putObject(BUCKET_NAME, filePath, file.buffer);
-    connectionDetailsToStore = { file_path: filePath };
-  } else if (sourceType === "database") {
-    if (!connectionDetails) {
-      throw new Error(
-        'Les détails de connexion sont requis pour le type "database"'
-      );
-    }
-
-    const { host, dialect, username, password, dbname } = connectionDetails;
-    if (!host || !dialect || !username || !password || !dbname) {
-      throw new Error(
-        "Tous les champs sont requis pour une source de type database : host, dialect, username, password, dbname"
-      );
-    }
-
-    const validDialects = ["mysql", "postgres", "sqlite", "mariadb", "mongodb"];
-    if (!validDialects.includes(dialect)) {
-      throw new Error(
-        "Dialecte invalide. Valeurs acceptées : mysql, postgres, sqlite, mariadb, mongodb"
-      );
-    }
-
-    dataFormat = "json";
-    connectionDetailsToStore = {
-      host,
-      dialect,
-      username,
-      password: encrypt(password),
-      dbname,
-    };
-  } else if (sourceType === "api") {
-    if (!connectionDetails) {
-      throw new Error(
-        'Les détails de connexion sont requis pour le type "api"'
-      );
-    }
-
-    const { url, credentials } = connectionDetails;
-    if (!url) {
-      throw new Error("L'URL est requise pour une source de type api");
-    }
-
-    // Valider l'URL
-    try {
-      new URL(url);
-    } catch {
-      throw new Error("L'URL fournie est invalide");
-    }
-
-    // Valider les credentials si fournis
-    if (credentials) {
-      if (
-        !((credentials.username && credentials.password) || credentials.api_key)
-      ) {
+  if (isFinal) {
+    // --- Cas source finale ---
+    if (sourceType === "file") {
+      if (!file) {
+        throw new Error('Un fichier est requis pour le type "file"');
+      }
+      const supportedFileExtensions = await listSupportedFileExtensions();
+      const validExtensions = supportedFileExtensions.data;
+      const fileExtension = file.originalname.split(".").pop().toLowerCase();
+      if (!validExtensions.includes(fileExtension)) {
         throw new Error(
-          "Les credentials doivent inclure username/password ou api_key"
+          `Format de fichier non pris en charge. Formats acceptés : ${validExtensions.join(
+            ", "
+          )}`
         );
       }
+      filePath = `dataworkspace/finalresults/${userId}/final_${generateTimestamp()}.${fileExtension}`;
+      await minioClient.putObject(BUCKET_NAME, filePath, file.buffer);
+      metadataToStore = {
+        file_path: filePath,
+        original_filename: file.originalname,
+        fileFormat: fileExtension,
+      };
+      fileFormat = fileExtension;
+    } else if (sourceType === "database") {
+      if (!metadata) {
+        throw new Error(
+          'Les détails de connexion sont requis pour le type "database"'
+        );
+      }
+      const { host, port, dialect, username, password, dbname } = metadata;
+      if (!host || !port || !dialect || !username || !password || !dbname) {
+        throw new Error(
+          "Tous les champs sont requis pour une source de type database : host, port, dialect, username, password, dbname"
+        );
+      }
+      // Test de connexion à la base de données
+      await testDatabaseConnection({
+        host,
+        port,
+        dialect,
+        username,
+        password,
+        dbname,
+      });
+      metadataToStore = {
+        host,
+        port,
+        dialect,
+        username,
+        password: encrypt(password),
+        dbname,
+      };
+      fileFormat = "database";
+    } else if (sourceType === "api") {
+      if (!metadata) {
+        throw new Error(
+          'Les détails de connexion sont requis pour le type "api"'
+        );
+      }
+      const { url, credentials } = metadata;
+      if (!url) {
+        throw new Error("L'URL est requise pour une source de type api");
+      }
+      try {
+        new URL(url);
+      } catch {
+        throw new Error("L'URL fournie est invalide");
+      }
+      if (credentials) {
+        if (
+          !(
+            (credentials.username && credentials.password) ||
+            credentials.api_key
+          )
+        ) {
+          throw new Error(
+            "Les credentials doivent inclure username/password ou api_key"
+          );
+        }
+      }
+      metadataToStore = {
+        url,
+        credentials: credentials ? encrypt(JSON.stringify(credentials)) : null,
+      };
+      fileFormat = "api";
     }
-
-    dataFormat = "json";
-    connectionDetailsToStore = {
-      url,
-      credentials: encrypt(JSON.stringify(credentials)) || null,
+    // Création dans FinalResults
+    const finalResult = await FinalResults.create({
+      user_id: userId,
+      result_type: sourceType,
+      result_name: sourceName,
+      metadata: metadataToStore,
+    });
+    return {
+      success: true,
+      data: { final_result_id: finalResult.final_result_id },
+      message: "Source finale ajoutée avec succès",
+    };
+  } else {
+    // --- Cas source non-finale ---
+    // let nonFinalSource = await NonFinalSources.create({
+    //   user_id: userId,
+    //   source_type: sourceType,
+    //   source_name: sourceName,
+    //   metadata: null, // sera mis à jour après
+    // });
+    let nonFinalSource;
+    if (sourceType === "file") {
+      if (!file) {
+        throw new Error('Un fichier est requis pour le type "file"');
+      }
+      const supportedFileExtensions = await listSupportedFileExtensions();
+      const validExtensions = supportedFileExtensions.data.map(
+        (f) => f.file_extension
+      );
+      const fileExtension = file.originalname.split(".").pop().toLowerCase();
+      if (!validExtensions.includes(fileExtension)) {
+        throw new Error(
+          `Format de fichier non pris en charge. Formats acceptés : ${validExtensions.join(
+            ", "
+          )}`
+        );
+      }
+      filePath = `dataworkspace/nonfinalsources/${userId}/source_${generateTimestamp()}.${fileExtension}`;
+      await minioClient.putObject(BUCKET_NAME, filePath, file.buffer);
+      metadataToStore = {
+        file_path: filePath,
+        original_filename: file.originalname,
+        fileFormat: fileExtension,
+      };
+      fileFormat = fileExtension;
+      // Mettre à jour la source avec le metadata
+      nonFinalSource = await NonFinalSources.create({
+        user_id: userId,
+        source_type: sourceType,
+        source_name: sourceName,
+        metadata: metadataToStore, // sera mis à jour après
+      });
+      // Créer l'état initial dans ProcessingStates
+      await ProcessingStates.create({
+        non_final_source_id: nonFinalSource.non_final_source_id,
+        parent_state_id: null,
+        version: 0,
+        is_current: true,
+        file_path: filePath,
+        file_format: fileFormat,
+        transformation_type: null,
+        transformation_parameters: null,
+      });
+    } else if (sourceType === "database") {
+      if (!metadata) {
+        throw new Error(
+          'Les détails de connexion sont requis pour le type "database"'
+        );
+      }
+      const { host, port, dialect, username, password, dbname } = metadata;
+      if (!host || !port || !dialect || !username || !password || !dbname) {
+        throw new Error(
+          "Tous les champs sont requis pour une source de type database : host, port, dialect, username, password, dbname"
+        );
+      }
+      // Test de connexion à la base de données
+      await testDatabaseConnection({
+        host,
+        port,
+        dialect,
+        username,
+        password,
+        dbname,
+      });
+      metadataToStore = {
+        host,
+        port,
+        dialect,
+        username: encrypt(username),
+        password: encrypt(password),
+        dbname,
+      };
+      nonFinalSource = await NonFinalSources.create({
+        user_id: userId,
+        source_type: sourceType,
+        source_name: sourceName,
+        metadata: metadataToStore, // sera mis à jour après
+      });
+      // Pas d'état initial dans ProcessingStates tant qu'aucune extraction n'est faite
+    } else if (sourceType === "api") {
+      if (!metadata) {
+        throw new Error(
+          'Les détails de connexion sont requis pour le type "api"'
+        );
+      }
+      const { url, credentials } = metadata;
+      if (!url) {
+        throw new Error("L'URL est requise pour une source de type api");
+      }
+      try {
+        new URL(url);
+      } catch {
+        throw new Error("L'URL fournie est invalide");
+      }
+      if (credentials) {
+        if (
+          !(
+            (credentials.username && credentials.password) ||
+            credentials.api_key
+          )
+        ) {
+          throw new Error(
+            "Les credentials doivent inclure username/password ou api_key"
+          );
+        }
+      }
+      metadataToStore = {
+        url,
+        credentials: credentials ? encrypt(JSON.stringify(credentials)) : null,
+      };
+      nonFinalSource = await NonFinalSources.create({
+        user_id: userId,
+        source_type: sourceType,
+        source_name: sourceName,
+        metadata: metadataToStore, // sera mis à jour après
+      });
+      // Pas d'état initial dans ProcessingStates tant qu'aucune extraction n'est faite
+    }
+    return {
+      success: true,
+      data: { non_final_source_id: nonFinalSource.non_final_source_id },
+      message: "Source non-finale ajoutée avec succès",
     };
   }
-
-  // Mettre à jour connection_details
-  await newSource.update({ connection_details: connectionDetailsToStore });
-
-  // Créer l'entrée dans Datasets
-  await Datasets.create({
-    source_id: newSource.source_id,
-    user_id: userId,
-    dataset_name: sourceName,
-    data_format: dataFormat,
-    data_content: filePath || null,
-    metadata: {
-      original_filename: file?.originalname || null,
-      source_type: sourceType,
-    },
-  });
-
-  return {
-    success: true,
-    data: { source_id: newSource.source_id },
-    message: "Source de données ajoutée avec succès",
-  };
 };
 
-// Supprimer une source de données
-const deleteDataSource = async (userId, sourceId) => {
-  const source = await DataSources.findOne({
-    where: { source_id: sourceId, user_id: userId },
-  });
+// Supprimer une source de données (NOUVEAU MODELE)
+const deleteDataSource = async (userId, sourceId, isFinal) => {
+  if (isFinal) {
+    // Suppression dans FinalResults
+    let finalSource = await FinalResults.findOne({
+      where: { final_result_id: sourceId, user_id: userId },
+    });
+    if (!finalSource) {
+      throw new Error("Source finale non trouvée ou non autorisée");
+    }
+    // Supprimer le fichier si c'est un fichier
+    // if (
+    //   finalSource.result_type === "file" &&
+    //   finalSource.metadata?.file_path
+    // ) {
+    //   await minioClient.removeObject(BUCKET_NAME, finalSource.metadata.file_path);
+    // }
+    await finalSource.destroy();
+    return { success: true, message: "Source finale supprimée avec succès" };
+  } else {
+    // Suppression dans NonFinalSources
+    let nonFinalSource = await NonFinalSources.findOne({
+      where: { non_final_source_id: sourceId, user_id: userId },
+      include: [
+        {
+          model: ProcessingStates,
+          as: "ProcessingStates",
+        },
+      ],
+    });
+    if (!nonFinalSource) {
+      throw new Error("Source de données non trouvée ou non autorisée");
+    }
+    // Supprimer tous les fichiers liés aux états de traitement
+    if (
+      nonFinalSource.ProcessingStates &&
+      nonFinalSource.ProcessingStates.length > 0
+    ) {
+      for (const state of nonFinalSource.ProcessingStates) {
+        // if (state.file_path) {
+        //   await minioClient.removeObject(BUCKET_NAME, state.file_path);
+        // }
+        await state.destroy();
+      }
+    }
+    // Supprimer la source elle-même
+    await nonFinalSource.destroy();
+    return {
+      success: true,
+      message: "Source non-finale supprimée avec succès",
+    };
+  }
+};
 
-  if (!source) {
+// Charger les données d'une source spécifique (NOUVEAU MODELE)
+const loadDataFromSource = async (userId, sourceId, limit = 10, offset = 0) => {
+  // Essayer d'abord comme source finale
+  let finalSource = await FinalResults.findOne({
+    where: { final_result_id: sourceId, user_id: userId },
+  });
+  if (finalSource) {
+    if (finalSource.result_type === "file" && finalSource.metadata?.file_path) {
+      const fileStream = await minioClient.getObject(
+        BUCKET_NAME,
+        finalSource.metadata.file_path
+      );
+      const fileData = await streamToBuffer(fileStream);
+      let parsedData;
+      const fileFormat = finalSource.metadata.fileFormat;
+      switch (fileFormat) {
+        case "csv":
+          parsedData = Papa.parse(fileData.toString("utf-8"), {
+            header: true,
+          }).data;
+          break;
+        case "excel":
+          const workbook = XLSX.read(fileData, { type: "buffer" });
+          const sheetName = workbook.SheetNames[0];
+          parsedData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+          break;
+        case "json":
+        case "geojson":
+          parsedData = JSON.parse(fileData.toString("utf-8"));
+          break;
+        case "xml":
+          parsedData = await xml2js.parseStringPromise(
+            fileData.toString("utf-8")
+          );
+          parsedData = flattenXml(parsedData);
+          break;
+        case "shapefile":
+          parsedData = await handleZippedShapefile(fileData);
+          break;
+        default:
+          throw new Error("Format de données non pris en charge");
+      }
+      if (!Array.isArray(parsedData)) parsedData = [parsedData];
+      const total = parsedData.length;
+      const paginatedData = parsedData.slice(offset, offset + limit);
+      return {
+        success: true,
+        data: {
+          source_id: finalSource.final_result_id,
+          source_type: finalSource.result_type,
+          source_name: finalSource.result_name,
+          content: paginatedData,
+          pagination: { limit, offset, total },
+        },
+      };
+    } else {
+      // Pour les sources finales non-fichiers (ex: database/api), retourner la metadata
+      return {
+        success: true,
+        data: {
+          source_id: finalSource.final_result_id,
+          source_type: finalSource.result_type,
+          source_name: finalSource.result_name,
+          metadata: finalSource.metadata,
+        },
+      };
+    }
+  }
+  // Sinon, essayer comme source non-finale
+  let nonFinalSource = await NonFinalSources.findOne({
+    where: { non_final_source_id: sourceId, user_id: userId },
+    include: [
+      {
+        model: ProcessingStates,
+        as: "ProcessingStates",
+        where: { is_current: true },
+        required: false,
+      },
+    ],
+  });
+  if (!nonFinalSource) {
     throw new Error("Source de données non trouvée ou non autorisée");
   }
-
-  if (source.source_type === "file" && source.connection_details?.file_path) {
-    await minioClient.removeObject(
-      BUCKET_NAME,
-      source.connection_details.file_path
+  const currentState =
+    nonFinalSource.ProcessingStates &&
+    nonFinalSource.ProcessingStates.length > 0
+      ? nonFinalSource.ProcessingStates[0]
+      : null;
+  if (!currentState || !currentState.file_path) {
+    throw new Error(
+      "Aucun état de traitement courant ou fichier associé à cette source"
     );
   }
-
-  await Datasets.destroy({ where: { source_id: sourceId } });
-  await source.destroy();
-
-  return { success: true, message: "Source de données supprimée avec succès" };
-};
-
-// Charger les données d'une source spécifique
-const loadDataFromSource = async (userId, sourceId, limit = 10, offset = 0) => {
-  const source = await DataSources.findOne({
-    where: { source_id: sourceId, user_id: userId },
-  });
-
-  if (!source) {
-    throw new Error("Source de données non trouvée ou non autorisée");
-  }
-
-  const dataset = await Datasets.findOne({
-    where: { source_id: sourceId },
-  });
-
-  if (!dataset) {
-    throw new Error("Aucun jeu de données associé à cette source");
-  }
-
   const fileStream = await minioClient.getObject(
     BUCKET_NAME,
-    dataset.data_content
+    currentState.file_path
   );
   const fileData = await streamToBuffer(fileStream);
-
   let parsedData;
-  switch (dataset.data_format) {
+  switch (currentState.file_format) {
     case "csv":
       parsedData = Papa.parse(fileData.toString("utf-8"), {
         header: true,
@@ -354,6 +605,7 @@ const loadDataFromSource = async (userId, sourceId, limit = 10, offset = 0) => {
       parsedData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
       break;
     case "json":
+    case "geojson":
       parsedData = JSON.parse(fileData.toString("utf-8"));
       break;
     case "xml":
@@ -361,50 +613,20 @@ const loadDataFromSource = async (userId, sourceId, limit = 10, offset = 0) => {
       parsedData = flattenXml(parsedData);
       break;
     case "shapefile":
-      try {
-        // Vérifier si c'est un fichier zip (en regardant les premiers octets)
-        const isZip =
-          fileData[0] === 0x50 &&
-          fileData[1] === 0x4b &&
-          fileData[2] === 0x03 &&
-          fileData[3] === 0x04;
-
-        if (isZip) {
-          // Traiter comme un zip contenant des shapefiles
-          parsedData = await handleZippedShapefile(fileData);
-        } else {
-          // Traiter comme un shapefile directement
-          const source = await shapefile.open(fileData);
-          const collection = { type: "FeatureCollection", features: [] };
-          let result;
-          while ((result = await source.read()) && !result.done) {
-            collection.features.push(result.value);
-          }
-          parsedData = collection.features;
-        }
-      } catch (error) {
-        throw new Error(
-          `Erreur lors du traitement du shapefile: ${error.message}`
-        );
-      }
+      parsedData = await handleZippedShapefile(fileData);
       break;
     default:
       throw new Error("Format de données non pris en charge");
   }
-
-  if (!Array.isArray(parsedData)) {
-    parsedData = [parsedData];
-  }
-
+  if (!Array.isArray(parsedData)) parsedData = [parsedData];
   const total = parsedData.length;
   const paginatedData = parsedData.slice(offset, offset + limit);
-
   return {
     success: true,
     data: {
-      source_id: source.source_id,
-      source_type: source.source_type,
-      source_name: source.source_name,
+      source_id: nonFinalSource.non_final_source_id,
+      source_type: nonFinalSource.source_type,
+      source_name: nonFinalSource.source_name,
       content: paginatedData,
       pagination: { limit, offset, total },
     },
@@ -420,19 +642,24 @@ const saveResult = async (userId, sourceId, resultType, config, files) => {
     );
   }
 
-  // Vérifier la source et le dataset
-  const source = await DataSources.findOne({
-    where: { source_id: sourceId, user_id: userId },
+  // Vérifier la source (finale ou non-finale)
+  let source = await FinalResults.findOne({
+    where: { final_result_id: sourceId, user_id: userId },
   });
-  if (!source) {
-    throw new Error("Source de données non trouvée ou non autorisée");
-  }
-
-  const dataset = await Datasets.findOne({
-    where: { source_id: sourceId },
-  });
-  if (!dataset) {
-    throw new Error("Aucun jeu de données associé à cette source");
+  let sourceType, sourceName;
+  if (source) {
+    sourceType = source.result_type;
+    sourceName = source.result_name;
+  } else {
+    // Vérifier si c'est une source non-finale
+    source = await NonFinalSources.findOne({
+      where: { non_final_source_id: sourceId, user_id: userId },
+    });
+    if (!source) {
+      throw new Error("Source de données non trouvée ou non autorisée");
+    }
+    sourceType = source.source_type;
+    sourceName = source.source_name;
   }
 
   if (!files || files.length === 0) {
@@ -456,7 +683,6 @@ const saveResult = async (userId, sourceId, resultType, config, files) => {
   ];
 
   for (const file of files) {
-    console.log(file.mimetype);
     if (!mimeTypes.includes(file.mimetype)) {
       throw new Error(
         `Type de fichier invalide : ${
@@ -464,13 +690,6 @@ const saveResult = async (userId, sourceId, resultType, config, files) => {
         }. Types acceptés : ${mimeTypes.join(", ")}`
       );
     }
-    // if (file.size > MAX_FILE_SIZE) {
-    //   throw new Error(
-    //     `Taille de fichier trop grande : ${
-    //       file.originalname
-    //     }. Taille maximale : ${MAX_FILE_SIZE / 1024} Ko`
-    //   );
-    // }
     if (file.size === 0) {
       throw new Error(
         `Fichier vide : ${file.originalname}. Veuillez fournir un fichier valide.`
@@ -510,21 +729,6 @@ const saveResult = async (userId, sourceId, resultType, config, files) => {
         `Type de fichier invalide pour un JSON : ${file.originalname}. Un JSON doit être un fichier JSON.`
       );
     }
-    // if (dataset.data_format === "shapefile" && resultType !== "shapefile") {
-    //   throw new Error(
-    //     `Le format des données initiales est shapefile. Le résultat doit être de type shapefile.`
-    //   );
-    // }
-    if (dataset.data_format !== "shapefile" && resultType === "shapefile") {
-      throw new Error(
-        `Le format des données initiales n'est pas shapefile. Le résultat ne peut pas être de type shapefile.`
-      );
-    }
-    if (dataset.data_format !== "shapefile" && resultType === "geojson") {
-      throw new Error(
-        `Le format des données initiales n'est pas shapefile. Le résultat ne peut pas être de type geojson.`
-      );
-    }
   }
 
   let format, filePath, fileBuffer;
@@ -539,107 +743,65 @@ const saveResult = async (userId, sourceId, resultType, config, files) => {
     if (!hasShp || !hasShx || !hasDbf) {
       throw new Error("Un shapefile doit inclure .shp, .shx et .dbf");
     }
-
-    // Créer un ZIP avec les fichiers
     const zip = new AdmZip();
     files.forEach((file) => {
       zip.addFile(file.originalname, file.buffer);
     });
     fileBuffer = zip.toBuffer();
-    filePath = `dataworkspace/results/${userId}/result_${generateTimestamp()}.zip`;
-  }
-  // Cas 2 : Fichier unique (ZIP pour shapefile ou autre format)
-  else if (files.length === 1) {
+    filePath = `dataworkspace/finalresults/${userId}/result_${generateTimestamp()}.zip`;
+  } else if (files.length === 1) {
     const file = files[0];
     format =
       resultType === "shapefile"
         ? "shapefile"
-        : file.mimetype.split("/")[1].split("+")[0]; // Ex. : svg pour image/svg+xml
-    format = format === "geo" ? "geojson" : format; // Corriger pour geojson
-    if (resultType === "shapefile" && file.mimetype.includes("zip")) {
-      // Vérifier le contenu du ZIP
-      const zip = new AdmZip(file.buffer);
-      const entries = zip.getEntries();
-      const hasShp = entries.some((entry) => entry.entryName.endsWith(".shp"));
-      const hasShx = entries.some((entry) => entry.entryName.endsWith(".shx"));
-      const hasDbf = entries.some((entry) => entry.entryName.endsWith(".dbf"));
-      if (!hasShp || !hasShx || !hasDbf) {
-        throw new Error(
-          "Le fichier ZIP doit contenir .shp, .shx et .dbf pour un shapefile"
-        );
-      }
-      fileBuffer = file.buffer;
-      filePath = `dataworkspace/results/${userId}/${Date.now()}_${
-        dataset.metadata.original_filename
-      }_result_${resultType}.zip`;
-    } else {
-      // Valider le MIME type pour les autres formats
-      // if (!validateMimeType(file.mimetype, format)) {
-      //   throw new Error(
-      //     `MIME type invalide pour ${format}. Reçu : ${file.mimetype}`
-      //   );
-      // }
-      fileBuffer = file.buffer;
-      const fileExtension = format === "shapefile" ? "shp" : format;
-      filePath = `dataworkspace/results/${userId}/result_${generateTimestamp()}.${fileExtension}`;
-    }
+        : file.mimetype.split("/")[1].split("+")[0];
+    fileBuffer = file.buffer;
+    const ext = file.originalname.split(".").pop().toLowerCase();
+    filePath = `dataworkspace/finalresults/${userId}/result_${generateTimestamp()}.${ext}`;
   } else {
-    throw new Error("Trop de fichiers pour un résultat non-shapefile");
+    throw new Error("Format de résultat non supporté");
   }
 
-  // Stocker dans MinIO
   await minioClient.putObject(BUCKET_NAME, filePath, fileBuffer);
 
-  // Enregistrer dans Results
-  const result = await Results.create({
+  // Enregistrer dans FinalResults
+  const finalResult = await FinalResults.create({
     user_id: userId,
-    // dataset_id: dataset.dataset_id,
     result_type: resultType,
-    file_path: filePath,
-    format,
-    metadata: config || {},
+    result_name: sourceName + " - résultat " + resultType,
+    metadata: {
+      file_path: filePath,
+      format,
+      config: config || {},
+      source_id: sourceId,
+      source_type: sourceType,
+    },
   });
-
-  // Enregistrer l'étape
-  // await ProcessingSteps.create({
-  //   dataset_id: dataset.dataset_id,
-  //   step_type: `result_${resultType}`,
-  //   step_description: `Enregistrement de ${resultType} (format: ${format})`,
-  //   parameters: config || {},
-  //   result_dataset_id: result.result_id,
-  // });
 
   return {
     success: true,
-    result_id: result.result_id,
+    final_result_id: finalResult.final_result_id,
     file_path: filePath,
     message: "Résultat enregistré avec succès",
   };
 };
 
-// Télécharger un fichier de résultat
-const downloadResult = async (userId, resultId) => {
-  // Vérifier le résultat
-  const result = await Results.findOne({
-    where: { result_id: resultId, user_id: userId },
-    // include: [
-    //   {
-    //     model: Datasets,
-    //     include: [{ model: DataSources, where: { user_id: userId } }],
-    //   },
-    // ],
+// Télécharger un fichier de résultat (nouveau modèle)
+const downloadResult = async (userId, finalResultId) => {
+  const result = await FinalResults.findOne({
+    where: { final_result_id: finalResultId, user_id: userId },
   });
   if (!result) {
     throw new Error("Résultat non trouvé ou non autorisé");
   }
-
-  // Générer une URL signée
+  if (!result.metadata?.file_path) {
+    throw new Error("Aucun fichier associé à ce résultat");
+  }
   const downloadUrl = await minioClient.presignedGetObject(
     BUCKET_NAME,
-    result.file_path,
+    result.metadata.file_path,
     60 * 60
-  ); // Valide 1h
-
+  );
   return {
     success: true,
     download_url: downloadUrl,
@@ -647,67 +809,22 @@ const downloadResult = async (userId, resultId) => {
   };
 };
 
-// Soumettre un dataset et/ou un résultat pour validation
-const submitResult = async (userId, datasetId, resultId, comments) => {
-  if (datasetId && resultId) {
-    throw new Error(
-      "Vous ne pouvez pas fournir à la fois dataset_id et result_id"
-    );
+// Soumettre un résultat final pour validation
+const submitResult = async (userId, finalResultId, comments) => {
+  // Vérifier le résultat final
+  const result = await FinalResults.findOne({
+    where: { final_result_id: finalResultId, user_id: userId },
+  });
+  if (!result) {
+    throw new Error("Résultat final non trouvé ou non autorisé");
   }
-  // Vérifier dataset_id
-  let dataset;
-  if (datasetId) {
-    dataset = await Datasets.findOne({
-      include: [{ model: DataSources, where: { user_id: userId } }],
-      where: { dataset_id: datasetId },
-    });
-    if (!dataset) {
-      throw new Error("Dataset non trouvé ou non autorisé");
-    }
-  }
-
-  // Vérifier result_id
-  let result;
-  if (resultId) {
-    result = await Results.findOne({
-      where: { result_id: resultId },
-      include: [
-        {
-          model: Datasets,
-          include: [{ model: DataSources, where: { user_id: userId } }],
-        },
-      ],
-    });
-    if (!result) {
-      throw new Error("Résultat non trouvé ou non autorisé");
-    }
-  }
-
-  if (!datasetId && !resultId) {
-    throw new Error("Au moins un dataset_id ou result_id est requis");
-  }
-
   // Créer la soumission
   const submission = await Submissions.create({
     user_id: userId,
-    dataset_id: datasetId || null,
-    result_id: resultId || null,
+    final_result_id: finalResultId,
     submission_status: "pending",
     submission_comments: comments || null,
   });
-
-  // Enregistrer l'étape
-  // const targetDatasetId = datasetId || result.dataset_id;
-  // await ProcessingSteps.create({
-  //   dataset_id: targetDatasetId,
-  //   step_type: "submission",
-  //   step_description: `Soumission pour validation (dataset_id: ${
-  //     datasetId || "aucun"
-  //   }, result_id: ${resultId || "aucun"})`,
-  //   parameters: { dataset_id: datasetId, result_id: resultId, comments },
-  //   result_dataset_id: null,
-  // });
-
   return {
     success: true,
     submission_id: submission.submission_id,
@@ -736,8 +853,7 @@ const getSubmissionStatus = async (userId, submissionId) => {
 const updateSubmission = async (
   userId,
   submissionId,
-  datasetId,
-  resultId,
+  finalResultId,
   comments
 ) => {
   const submission = await Submissions.findOne({
@@ -746,8 +862,6 @@ const updateSubmission = async (
   if (!submission) {
     throw new Error("Soumission non trouvée ou non autorisée");
   }
-
-  // Vérifier que la soumission est modifiable
   if (
     !["pending", "revision_requested"].includes(submission.submission_status)
   ) {
@@ -755,58 +869,24 @@ const updateSubmission = async (
       "Seules les soumissions en attente ou en révision peuvent être mises à jour"
     );
   }
-
-  // Vérifier qu'au moins un champ est fourni
-  if (!datasetId && !resultId && !comments) {
+  if (!finalResultId && !comments) {
     throw new Error(
-      "Au moins un champ à mettre à jour est requis (dataset_id, result_id, comments)"
+      "Au moins un champ à mettre à jour est requis (final_result_id, comments)"
     );
   }
-
-  if (datasetId && resultId) {
-    throw new Error(
-      "Vous ne pouvez pas fournir à la fois dataset_id et result_id"
-    );
-  }
-
-  // Vérifier dataset_id
-  if (datasetId) {
-    const dataset = await Datasets.findOne({
-      include: [{ model: DataSources, where: { user_id: userId } }],
-      where: { dataset_id: datasetId },
-    });
-    if (!dataset) {
-      throw new Error("Dataset non trouvé ou non autorisé");
-    }
-    resultId = null; // Ne pas permettre de changer le dataset_id et result_id en même temps
-  } else if (resultId) {
-    // Vérifier result_id
-    const result = await Results.findOne({
-      where: { result_id: resultId, user_id: userId }, // Utilisation de user_id dans Results
+  if (finalResultId) {
+    const result = await FinalResults.findOne({
+      where: { final_result_id: finalResultId, user_id: userId },
     });
     if (!result) {
-      throw new Error("Résultat non trouvé ou non autorisé");
+      throw new Error("Résultat final non trouvé ou non autorisé");
     }
-    datasetId = null; // Ne pas permettre de changer le dataset_id et result_id en même temps
   }
-
-  // Mettre à jour la soumission
   await submission.update({
-    dataset_id: datasetId,
-    result_id: resultId,
+    final_result_id: finalResultId || submission.final_result_id,
     submission_status: "pending",
     submission_comments: comments || submission.submission_comments,
   });
-
-  // Enregistrer l'étape
-  // await ProcessingSteps.create({
-  //   dataset_id: datasetId || submission.dataset_id,
-  //   step_type: "submission_update",
-  //   step_description: `Mise à jour de la soumission ${submissionId}`,
-  //   parameters: { dataset_id: datasetId, result_id: resultId, metadata },
-  //   result_dataset_id: null,
-  // });
-
   return {
     success: true,
     submission_id: submission.submission_id,
@@ -899,6 +979,476 @@ const updateSubmissionStatus = async (user, submissionId, status) => {
   };
 };
 
+// Teste la connexion à une base de données selon le dialecte
+const testDatabaseConnection = async ({
+  host,
+  port,
+  dialect,
+  username,
+  password,
+  dbname,
+}) => {
+  if (dialect === "mysql" || dialect === "mariadb") {
+    const mysql = require("mysql2/promise");
+    let connection;
+    try {
+      connection = await mysql.createConnection({
+        host,
+        port,
+        user: username,
+        password,
+        database: dbname,
+      });
+      await connection.ping();
+      await connection.end();
+      return true;
+    } catch (err) {
+      throw new Error(
+        "Connexion à la base MySQL/MariaDB impossible : " + err.message
+      );
+    }
+  } else if (dialect === "postgres") {
+    const { Client } = require("pg");
+    const client = new Client({
+      host,
+      port,
+      user: username,
+      password,
+      database: dbname,
+    });
+    try {
+      await client.connect();
+      await client.end();
+      return true;
+    } catch (err) {
+      throw new Error(
+        "Connexion à la base PostgreSQL impossible : " + err.message
+      );
+    }
+  } else if (dialect === "sqlite") {
+    const sqlite3 = require("sqlite3");
+    return new Promise((resolve, reject) => {
+      const db = new sqlite3.Database(dbname, (err) => {
+        if (err)
+          reject(new Error("Connexion SQLite impossible : " + err.message));
+        else {
+          db.close();
+          resolve(true);
+        }
+      });
+    });
+  } else if (dialect === "mongodb") {
+    const { MongoClient } = require("mongodb");
+    const url = `mongodb://${username}:${password}@${host}:${port}/${dbname}`;
+    const client = new MongoClient(url);
+    try {
+      await client.connect();
+      await client.close();
+      return true;
+    } catch (err) {
+      throw new Error("Connexion à MongoDB impossible : " + err.message);
+    }
+  } else {
+    throw new Error("Dialecte non supporté pour la vérification de connexion");
+  }
+};
+
+// Lister les fichiers supportés
+const listSupportedFileExtensions = async () => {
+  const files = await SupportedFileExtensions.findAll({
+    where: { status: "active" },
+    attributes: ["file_extension"],
+  });
+  return {
+    success: true,
+    data: files.map((f) => f.file_extension),
+    message: "Fichiers supportés récupérés avec succès",
+  };
+};
+
+// Lister les types de bases de données supportés
+const listSupportedDatabaseTypes = async () => {
+  const dbTypes = await SupportedDatabaseTypes.findAll({
+    where: { status: "active" },
+    attributes: ["db_type"],
+  });
+  return {
+    success: true,
+    data: dbTypes.map((db) => db.db_type),
+    message: "Types de bases de données supportés récupérés avec succès",
+  };
+};
+
+// Lister les graphiques supportés
+const listSupportedCharts = async () => {
+  const charts = await SupportedCharts.findAll({
+    where: { status: "active" },
+    attributes: ["chart_name", "required_parameters"],
+  });
+  return {
+    success: true,
+    data: charts.map((chart) => ({
+      chart_name: chart.chart_name,
+      required_parameters: chart.required_parameters,
+    })),
+    message: "Graphiques supportés récupérés avec succès",
+  };
+};
+
+// Lister les tables d'une source de base de données (nouveau modèle)
+const listTablesOfDatabaseSource = async (sourceId) => {
+  const source = await NonFinalSources.findOne({
+    where: { non_final_source_id: sourceId },
+  });
+  if (!source || source.source_type !== "database") {
+    throw new Error("Source de type base de données non trouvée");
+  }
+
+  const metadata = source.metadata;
+  if (!metadata) throw new Error("Aucun metadata de connexion trouvé");
+  const { host, port, dialect, username, password, dbname } = metadata;
+  if (!host || !port || !dialect || !username || !password || !dbname) {
+    throw new Error("Champs de connexion manquants dans le metadata");
+  }
+  let decryptedUsername =
+    typeof username === "object" ? decrypt(username) : username;
+  let decryptedPassword =
+    typeof password === "object" ? decrypt(password) : password;
+  if (dialect === "mysql" || dialect === "mariadb") {
+    const mysql = require("mysql2/promise");
+    const connection = await mysql.createConnection({
+      host,
+      port,
+      user: decryptedUsername,
+      password: decryptedPassword,
+      database: dbname,
+    });
+    const [rows] = await connection.query("SHOW TABLES");
+    await connection.end();
+    // The key is 'Tables_in_<dbname>'
+    const tableKey = Object.keys(rows[0] || {}).find((k) =>
+      k.toLowerCase().includes("tables_in_")
+    );
+    const tables = rows.map((row) => row[tableKey]);
+    return { success: true, tables };
+  } else if (dialect === "postgres") {
+    const { Client } = require("pg");
+    const client = new Client({
+      host,
+      port,
+      user: decryptedUsername,
+      password: decryptedPassword,
+      database: dbname,
+    });
+    await client.connect();
+    const res = await client.query(
+      `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`
+    );
+    await client.end();
+    return { success: true, tables: res.rows.map((r) => r.table_name) };
+  } else if (dialect === "sqlite") {
+    const sqlite3 = require("sqlite3");
+    return new Promise((resolve, reject) => {
+      const db = new sqlite3.Database(dbname, (err) => {
+        if (err)
+          return reject(
+            new Error("Connexion SQLite impossible : " + err.message)
+          );
+        db.all(
+          "SELECT name FROM sqlite_master WHERE type='table'",
+          (err, rows) => {
+            db.close();
+            if (err)
+              return reject(
+                new Error(
+                  "Erreur lors de la récupération des tables SQLite : " +
+                    err.message
+                )
+              );
+            resolve({ success: true, tables: rows.map((r) => r.name) });
+          }
+        );
+      });
+    });
+  } else if (dialect === "mongodb") {
+    const { MongoClient } = require("mongodb");
+    const url = `mongodb://${decryptedUsername}:${decryptedPassword}@${host}:${port}/${dbname}`;
+    const client = new MongoClient(url);
+    await client.connect();
+    const db = client.db(dbname);
+    const collections = await db.listCollections().toArray();
+    await client.close();
+    return { success: true, tables: collections.map((c) => c.name) };
+  } else {
+    throw new Error("Dialecte non supporté pour l'introspection des tables");
+  }
+};
+
+// Lister les colonnes d'une table d'une source de base de données (nouveau modèle)
+const listColumnsOfTable = async (sourceId, tableName) => {
+  const source = await NonFinalSources.findOne({
+    where: { non_final_source_id: sourceId },
+  });
+  if (!source || source.source_type !== "database") {
+    throw new Error("Source de type base de données non trouvée");
+  }
+
+  const metadata = source.metadata;
+  if (!metadata) throw new Error("Aucun metadata de connexion trouvé");
+  const { host, port, dialect, username, password, dbname } = metadata;
+  if (!host || !port || !dialect || !username || !password || !dbname) {
+    throw new Error("Champs de connexion manquants dans le metadata");
+  }
+  let decryptedUsername =
+    typeof username === "object" ? decrypt(username) : username;
+  let decryptedPassword =
+    typeof password === "object" ? decrypt(password) : password;
+  if (dialect === "mysql" || dialect === "mariadb") {
+    const mysql = require("mysql2/promise");
+    const connection = await mysql.createConnection({
+      host,
+      port,
+      user: decryptedUsername,
+      password: decryptedPassword,
+      database: dbname,
+    });
+    if (!isValidDbIdentifier(tableName)) {
+      throw new Error("Nom de table invalide");
+    }
+    const [rows] = await connection.query(`SHOW COLUMNS FROM \`${tableName}\``);
+    await connection.end();
+    return { success: true, columns: rows.map((r) => r.Field) };
+  } else if (dialect === "postgres") {
+    const { Client } = require("pg");
+    const client = new Client({
+      host,
+      port,
+      user: decryptedUsername,
+      password: decryptedPassword,
+      database: dbname,
+    });
+    await client.connect();
+    const res = await client.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND table_schema = 'public'`,
+      [tableName]
+    );
+    await client.end();
+    return { success: true, columns: res.rows.map((r) => r.column_name) };
+  } else if (dialect === "sqlite") {
+    const sqlite3 = require("sqlite3");
+    return new Promise((resolve, reject) => {
+      const db = new sqlite3.Database(dbname, (err) => {
+        if (err)
+          return reject(
+            new Error("Connexion SQLite impossible : " + err.message)
+          );
+        if (!isValidDbIdentifier(tableName)) {
+          db.close();
+          return reject(new Error("Nom de table invalide"));
+        }
+        db.all(`PRAGMA table_info("${tableName}")`, (err, rows) => {
+          db.close();
+          if (err)
+            return reject(
+              new Error(
+                "Erreur lors de la récupération des colonnes SQLite : " +
+                  err.message
+              )
+            );
+          resolve({ success: true, columns: rows.map((r) => r.name) });
+        });
+      });
+    });
+  } else if (dialect === "mongodb") {
+    const { MongoClient } = require("mongodb");
+    const url = `mongodb://${decryptedUsername}:${decryptedPassword}@${host}:${port}/${dbname}`;
+    const client = new MongoClient(url);
+    await client.connect();
+    const db = client.db(dbname);
+    const sample = await db.collection(tableName).findOne();
+    await client.close();
+    if (!sample) return { success: true, columns: [] };
+    return { success: true, columns: Object.keys(sample) };
+  } else {
+    throw new Error("Dialecte non supporté pour l'introspection des colonnes");
+  }
+};
+
+// Lister les tables avec colonnes et compte des lignes
+const listTablesWithColumnsAndCount = async (sourceId) => {
+  const source = await NonFinalSources.findOne({
+    where: { non_final_source_id: sourceId },
+  });
+  if (!source || source.source_type !== "database") {
+    throw new Error("Source de type base de données non trouvée");
+  }
+  const metadata = source.metadata;
+  if (!metadata) throw new Error("Aucun metadata de connexion trouvé");
+  const { host, port, dialect, username, password, dbname } = metadata;
+  let decryptedUsername =
+    typeof username === "object" ? decrypt(username) : username;
+  let decryptedPassword =
+    typeof password === "object" ? decrypt(password) : password;
+
+  if (dialect === "mysql" || dialect === "mariadb") {
+    const mysql = require("mysql2/promise");
+    const connection = await mysql.createConnection({
+      host,
+      port,
+      user: decryptedUsername,
+      password: decryptedPassword,
+      database: dbname,
+    });
+    const [tablesRows] = await connection.query("SHOW TABLES");
+    const tableKey = Object.keys(tablesRows[0] || {}).find((k) =>
+      k.toLowerCase().includes("tables_in_")
+    );
+    const tables = tablesRows.map((row) => row[tableKey]);
+    const result = [];
+    for (const table of tables) {
+      if (!isValidDbIdentifier(table)) {
+        throw new Error(`Nom de table invalide: ${table}`);
+      }
+      const [columnsRows] = await connection.query(
+        `SHOW COLUMNS FROM \`${table}\``
+      );
+      const columns = columnsRows.map((col) => col.Field);
+      const [countRows] = await connection.query(
+        `SELECT COUNT(*) as count FROM \`${table}\``
+      );
+      result.push({
+        name: table,
+        columns,
+        rowCount: countRows[0].count,
+      });
+    }
+    await connection.end();
+    return { success: true, tables: result };
+  } else if (dialect === "postgres") {
+    const { Client } = require("pg");
+    const client = new Client({
+      host,
+      port,
+      user: decryptedUsername,
+      password: decryptedPassword,
+      database: dbname,
+    });
+    await client.connect();
+    const res = await client.query(
+      `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`
+    );
+    const tables = res.rows.map((r) => r.table_name);
+    const result = [];
+    for (const table of tables) {
+      const colRes = await client.query(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND table_schema = 'public'`,
+        [table]
+      );
+      const columns = colRes.rows.map((r) => r.column_name);
+      const countRes = await client.query(
+        `SELECT COUNT(*) as count FROM "${table}"`
+      );
+      result.push({
+        name: table,
+        columns,
+        rowCount: parseInt(countRes.rows[0].count, 10),
+      });
+    }
+    await client.end();
+    return { success: true, tables: result };
+  } else if (dialect === "sqlite") {
+    const sqlite3 = require("sqlite3");
+    return new Promise((resolve, reject) => {
+      const db = new sqlite3.Database(dbname, (err) => {
+        if (err)
+          return reject(
+            new Error("Connexion SQLite impossible : " + err.message)
+          );
+        db.all(
+          "SELECT name FROM sqlite_master WHERE type='table'",
+          async (err, rows) => {
+            if (err) {
+              db.close();
+              return reject(
+                new Error(
+                  "Erreur lors de la récupération des tables SQLite : " +
+                    err.message
+                )
+              );
+            }
+            const tables = rows.map((r) => r.name);
+            const result = [];
+            let processed = 0;
+            for (const table of tables) {
+              if (!isValidDbIdentifier(table)) {
+                db.close();
+                return reject(new Error(`Nom de table invalide: ${table}`));
+              }
+              db.all(`PRAGMA table_info("${table}")`, (err, colRows) => {
+                if (err) {
+                  db.close();
+                  return reject(
+                    new Error(
+                      "Erreur lors de la récupération des colonnes SQLite : " +
+                        err.message
+                    )
+                  );
+                }
+                const columns = colRows.map((c) => c.name);
+                db.get(
+                  `SELECT COUNT(*) as count FROM "${table}"`,
+                  (err, countRow) => {
+                    if (err) {
+                      db.close();
+                      return reject(
+                        new Error(
+                          "Erreur lors du comptage SQLite : " + err.message
+                        )
+                      );
+                    }
+                    result.push({
+                      name: table,
+                      columns,
+                      rowCount: countRow.count,
+                    });
+                    processed++;
+                    if (processed === tables.length) {
+                      db.close();
+                      resolve({ success: true, tables: result });
+                    }
+                  }
+                );
+              });
+            }
+          }
+        );
+      });
+    });
+  } else if (dialect === "mongodb") {
+    const { MongoClient } = require("mongodb");
+    const url = `mongodb://${decryptedUsername}:${decryptedPassword}@${host}:${port}/${dbname}`;
+    const client = new MongoClient(url);
+    await client.connect();
+    const db = client.db(dbname);
+    const collections = await db.listCollections().toArray();
+    const result = [];
+    for (const col of collections) {
+      const sample = await db.collection(col.name).findOne();
+      const columns = sample ? Object.keys(sample) : [];
+      const rowCount = await db.collection(col.name).countDocuments();
+      result.push({
+        name: col.name,
+        columns,
+        rowCount,
+      });
+    }
+    await client.close();
+    return { success: true, tables: result };
+  } else {
+    throw new Error("Dialecte non supporté pour l'introspection des tables");
+  }
+};
+
 module.exports = {
   listDataSources,
   addDataSource,
@@ -913,4 +1463,10 @@ module.exports = {
   updateSourceTypeStatus,
   listDataSourceTypes,
   updateSubmissionStatus,
+  listSupportedFileExtensions,
+  listSupportedDatabaseTypes,
+  listSupportedCharts,
+  listTablesOfDatabaseSource,
+  listColumnsOfTable,
+  listTablesWithColumnsAndCount,
 };

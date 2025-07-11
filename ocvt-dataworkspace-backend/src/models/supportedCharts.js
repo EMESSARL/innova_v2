@@ -1,18 +1,22 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/db");
 
-const SourceTypes = sequelize.define(
-  "SourceTypes",
+const SupportedCharts = sequelize.define(
+  "SupportedCharts",
   {
-    source_type_id: {
+    chart_id: {
       type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true,
     },
-    type_name: {
+    chart_name: {
       type: DataTypes.STRING,
       allowNull: false,
       unique: true,
+    },
+    required_parameters: {
+      type: DataTypes.JSONB, // Pour stocker des structures de données complexes
+      allowNull: true,
     },
     status: {
       type: DataTypes.ENUM("active", "inactive"),
@@ -21,16 +25,10 @@ const SourceTypes = sequelize.define(
     },
   },
   {
-    tableName: "SourceTypes",
+    tableName: "SupportedCharts",
     createdAt: false,
     updatedAt: false,
   }
 );
 
-// SourceTypes.getActiveSourceTypes = async () => {
-//   return await SourceTypes.findAll({
-//     where: { status: "active" },
-//   });
-// };
-
-module.exports = SourceTypes;
+module.exports = SupportedCharts;

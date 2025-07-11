@@ -107,11 +107,11 @@ router.post(
     check("description")
       .notEmpty()
       .withMessage("La description de la source est requise"),
-    check("connection_details")
+    check("metadata")
       .if((value, { req }) => req.body.type !== "file")
       .notEmpty()
       .withMessage("Les détails de connexion sont requis pour database et api"),
-    check("connection_details")
+    check("metadata")
       .if((value, { req }) => req.body.type === "database")
       .custom((value) => {
         const details = typeof value === "string" ? JSON.parse(value) : value;
@@ -140,7 +140,7 @@ router.post(
         }
         return true;
       }),
-    check("connection_details")
+    check("metadata")
       .if((value, { req }) => req.body.type === "api")
       .custom((value) => {
         const details = typeof value === "string" ? JSON.parse(value) : value;
@@ -174,6 +174,11 @@ router.post(
         }
         return true;
       }),
+    check("is_final")
+      .optional()
+      .isBoolean()
+      .withMessage("Le paramètre is_final doit être un booléen")
+      .toBoolean(),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -181,17 +186,26 @@ router.post(
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { type, description, connection_details } = req.body;
+    let { type, description, metadata, is_final } = req.body;
     const file = req.file;
     const userId = req.user.id;
 
+    if (type === "api" || type === "database") {
+      is_final = false;
+    }
+    if (type === "file" && is_final == null) {
+      return res
+        .status(400)
+        .json({ error: "Le paramètre is_final est requis pour le type file" });
+    }
     try {
       const result = await dataworkspaceService.addDataSource(
         userId,
         type,
         description,
         file,
-        connection_details ? JSON.parse(connection_details) : null
+        metadata ? JSON.parse(metadata) : null,
+        is_final
       );
       res.status(201).json(result);
     } catch (error) {
@@ -205,7 +219,8 @@ router.post(
         error.message.includes("Dialecte invalide") ||
         error.message.includes("L'URL est requise") ||
         error.message.includes("L'URL fournie est invalide") ||
-        error.message.includes("Les credentials doivent inclure")
+        error.message.includes("Les credentials doivent inclure") ||
+        error.message.includes("Le paramètre is_final doit être un booléen")
       ) {
         return res.status(400).json({ error: error.message });
       }
@@ -218,24 +233,30 @@ router.delete(
   "/data-sources/:source_id",
   authMiddleware,
   requireRole(["ROLE_POINT_FOCAL"]),
-  [param("source_id").isInt().withMessage("ID de la source invalide")],
+  [
+    param("source_id").isInt().withMessage("ID de la source invalide"),
+    query("is_final")
+      .isBoolean()
+      .withMessage("Le paramètre is_final doit être un booléen")
+      .toBoolean(),
+  ],
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
     }
-
     const { source_id } = req.params;
     const userId = req.user.id;
-
+    const isFinal = req.query.is_final === "true" ? true : false;
     try {
       const result = await dataworkspaceService.deleteDataSource(
         userId,
-        source_id
+        source_id,
+        isFinal
       );
       res.status(200).json(result);
     } catch (error) {
-      if (error.message === "Source de données non trouvée ou non autorisée") {
+      if (error.message.includes("non trouvée ou non autorisée")) {
         return res.status(404).json({ error: error.message });
       }
       res.status(500).json({ error: "Erreur serveur : " + error.message });
@@ -733,6 +754,143 @@ router.patch(
       ) {
         return res.status(403).json({ error: error.message });
       }
+      res.status(500).json({ error: "Erreur serveur : " + error.message });
+    }
+  }
+);
+
+// GET /supported-database-types
+router.get(
+  "/supported-database-types",
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
+  async (req, res) => {
+    try {
+      const result = await dataworkspaceService.listSupportedDatabaseTypes();
+      res.status(200).json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Erreur serveur : " + error.message });
+    }
+  }
+);
+
+// GET /supported-file-extensions
+router.get(
+  "/supported-file-extensions",
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
+  async (req, res) => {
+    try {
+      const result = await dataworkspaceService.listSupportedFileExtensions();
+      res.status(200).json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Erreur serveur : " + error.message });
+    }
+  }
+);
+
+// GET /supported-charts
+router.get(
+  "/supported-charts",
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
+  async (req, res) => {
+    try {
+      const result = await dataworkspaceService.listSupportedCharts();
+      res.status(200).json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Erreur serveur : " + error.message });
+    }
+  }
+);
+
+// GET /data-sources/:source_id/tables
+router.get(
+  "/data-sources/:source_id/tables",
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
+  [param("source_id").isInt().withMessage("ID de la source invalide")],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+    const { source_id } = req.params;
+    try {
+      const result = await dataworkspaceService.listTablesOfDatabaseSource(
+        source_id
+      );
+      res.status(200).json(result);
+    } catch (error) {
+      if (
+        error.message.includes(
+          "Source finale de type base de données non trouvée"
+        ) ||
+        error.message.includes(
+          "Source non-finale de type base de données non trouvée"
+        )
+      ) {
+        return res.status(404).json({ error: error.message });
+      }
+      res.status(500).json({ error: "Erreur serveur : " + error.message });
+    }
+  }
+);
+
+// GET /data-sources/:source_id/tables/:table_name/columns
+router.get(
+  "/data-sources/:source_id/tables/:table_name/columns",
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
+  [
+    param("source_id").isInt().withMessage("ID de la source invalide"),
+    param("table_name").notEmpty().withMessage("Le nom de la table est requis"),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+    const { source_id, table_name } = req.params;
+    try {
+      const result = await dataworkspaceService.listColumnsOfTable(
+        source_id,
+        table_name
+      );
+      res.status(200).json(result);
+    } catch (error) {
+      if (
+        error.message.includes(
+          "Source finale de type base de données non trouvée"
+        ) ||
+        error.message.includes(
+          "Source non-finale de type base de données non trouvée"
+        )
+      ) {
+        return res.status(404).json({ error: error.message });
+      }
+      res.status(500).json({ error: "Erreur serveur : " + error.message });
+    }
+  }
+);
+
+router.get(
+  "/data-sources/:source_id/tables/with-columns-and-count",
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
+  [param("source_id").isInt().withMessage("ID de la source invalide")],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+    const { source_id } = req.params;
+    try {
+      const result = await dataworkspaceService.listTablesWithColumnsAndCount(
+        source_id
+      );
+      res.status(200).json(result);
+    } catch (error) {
       res.status(500).json({ error: "Erreur serveur : " + error.message });
     }
   }
