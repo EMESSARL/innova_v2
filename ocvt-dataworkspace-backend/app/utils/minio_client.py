@@ -13,7 +13,7 @@ class MinioClient:
     """Client pour interagir avec MinIO."""
 
     def __init__(self):
-        print(os.getenv("MINIO_ENDPOINT", "localhost"))
+        # print(os.getenv("MINIO_ENDPOINT", "localhost"))
         self.client = Minio(
             endpoint=f"{os.getenv("MINIO_ENDPOINT", "localhost")}:{os.getenv("MINIO_PORT", "9000")}",
             access_key=os.getenv("MINIO_ACCESS_KEY", ""),

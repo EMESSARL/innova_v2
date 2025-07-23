@@ -9,7 +9,7 @@ router.post(
   authMiddleware,
   requireRole(["ROLE_POINT_FOCAL"]),
   [
-    check("dataset_id").isInt().withMessage("ID du dataset invalide"),
+    check("state_id").isInt().withMessage("ID du dataset invalide"),
     check("algorithm")
       .optional()
       .isIn(["isolation_forest", "lof", "one_class_svm", "elliptic_envelope"])
@@ -73,7 +73,7 @@ router.post(
     }
 
     const {
-      dataset_id,
+      state_id,
       algorithm,
       hyperparameters,
       preprocessing,
@@ -86,7 +86,7 @@ router.post(
     try {
       const result = await anomaliesService.detectAnomalies(
         userId,
-        dataset_id,
+        state_id,
         algorithm,
         hyperparameters,
         preprocessing,

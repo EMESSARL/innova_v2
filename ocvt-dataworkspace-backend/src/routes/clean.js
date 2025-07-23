@@ -9,7 +9,7 @@ router.post(
   authMiddleware,
   requireRole(["ROLE_POINT_FOCAL"]),
   [
-    check("dataset_id").isInt().withMessage("ID du dataset invalide"),
+    check("state_id").isInt().withMessage("ID du dataset invalide"),
     check("cleaning_actions")
       .isObject()
       .withMessage("Les actions de nettoyage doivent être un objet"),
@@ -222,14 +222,14 @@ router.post(
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { dataset_id, cleaning_actions, keep_original, output_format } =
+    const { state_id, cleaning_actions, keep_original, output_format } =
       req.body;
     const userId = req.user.id;
 
     try {
       const result = await cleanService.cleanDataset(
         userId,
-        dataset_id,
+        state_id,
         cleaning_actions,
         keep_original,
         output_format

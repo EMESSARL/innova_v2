@@ -320,9 +320,7 @@ const addDataSource = async (
         throw new Error('Un fichier est requis pour le type "file"');
       }
       const supportedFileExtensions = await listSupportedFileExtensions();
-      const validExtensions = supportedFileExtensions.data.map(
-        (f) => f.file_extension
-      );
+      const validExtensions = supportedFileExtensions.data;
       const fileExtension = file.originalname.split(".").pop().toLowerCase();
       if (!validExtensions.includes(fileExtension)) {
         throw new Error(
@@ -347,16 +345,16 @@ const addDataSource = async (
         metadata: metadataToStore, // sera mis à jour après
       });
       // Créer l'état initial dans ProcessingStates
-      await ProcessingStates.create({
-        non_final_source_id: nonFinalSource.non_final_source_id,
-        parent_state_id: null,
-        version: 0,
-        is_current: true,
-        file_path: filePath,
-        file_format: fileFormat,
-        transformation_type: null,
-        transformation_parameters: null,
-      });
+      // await ProcessingStates.create({
+      //   non_final_source_id: nonFinalSource.non_final_source_id,
+      //   parent_state_id: null,
+      //   version: 0,
+      //   is_current: true,
+      //   file_path: filePath,
+      //   file_format: fileFormat,
+      //   transformation_type: null,
+      //   transformation_parameters: null,
+      // });
     } else if (sourceType === "database") {
       if (!metadata) {
         throw new Error(
@@ -1449,6 +1447,509 @@ const listTablesWithColumnsAndCount = async (sourceId) => {
   }
 };
 
+// Créer l'état initial (version 0) dans ProcessingStates pour une source
+const createInitialProcessingState = async ({
+  userId,
+  sourceId,
+  columns,
+  tableName = null,
+}) => {
+  if (!Array.isArray(columns) || columns.length === 0) {
+    throw new Error("Aucune colonne sélectionnée");
+  }
+
+  const source = await NonFinalSources.findOne({
+    where: { non_final_source_id: sourceId, user_id: userId },
+  });
+  if (!source) throw new Error("Source non trouvée");
+  const sourceType = source.source_type;
+  const metadata = source.metadata;
+  let dataRows = [];
+  let fileFormat = "csv";
+  let filePath;
+  let transformationParameters = { columns };
+  if (tableName) transformationParameters.table = tableName;
+
+  if (sourceType === "database") {
+    // Vérification des identifiants de table et colonnes
+    if (tableName && !isValidDbIdentifier(tableName)) {
+      throw new Error("Nom de table invalide (caractères non autorisés)");
+    }
+    for (const col of columns) {
+      if (!isValidDbIdentifier(col)) {
+        throw new Error(`Nom de colonne invalide : ${col}`);
+      }
+    }
+    if (!tableName)
+      throw new Error("Le nom de la table est requis pour une base de données");
+    const { host, port, dialect, username, password, dbname } = metadata;
+    let decryptedUsername =
+      typeof username === "object" ? decrypt(username) : username;
+    let decryptedPassword =
+      typeof password === "object" ? decrypt(password) : password;
+    try {
+      if (dialect === "mysql" || dialect === "mariadb") {
+        const mysql = require("mysql2/promise");
+        const connection = await mysql.createConnection({
+          host,
+          port,
+          user: decryptedUsername,
+          password: decryptedPassword,
+          database: dbname,
+        });
+        // Vérifier l'existence de la table
+        // const [tables] = await connection.query("SHOW TABLES");
+        // const tableKey = Object.keys(tables[0] || {}).find((k) => k.toLowerCase().includes("tables_in_"));
+        // const tableNames = tables.map((row) => row[tableKey]);
+        // if (!tableNames.includes(tableName)) {
+        //   await connection.end();
+        //   throw new Error(`Table non trouvée : ${tableName}`);
+        // }
+        // Vérifier l'existence des colonnes
+        // const [columnsInfo] = await connection.query(`SHOW COLUMNS FROM \\`${tableName}\\``.replace(/\\/g, ''));
+        // const availableCols = columnsInfo.map((c) => c.Field);
+        // for (const col of columns) {
+        //   if (!availableCols.includes(col)) {
+        //     await connection.end();
+        //     throw new Error(`Colonne non trouvée dans la table : ${col}`);
+        //   }
+        // }
+        const colList = columns.map((c) => `\`${c}\``).join(", ");
+        const [rows] = await connection.query(
+          `SELECT ${colList} FROM \`${tableName}\``
+        );
+        dataRows = rows;
+        await connection.end();
+      } else if (dialect === "postgres") {
+        const { Client } = require("pg");
+        const client = new Client({
+          host,
+          port,
+          user: decryptedUsername,
+          password: decryptedPassword,
+          database: dbname,
+        });
+        await client.connect();
+        // Vérifier l'existence de la table
+        // const tableRes = await client.query(
+        //   `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1`,
+        //   [tableName]
+        // );
+        // if (tableRes.rows.length === 0) {
+        //   await client.end();
+        //   throw new Error(`Table non trouvée : ${tableName}`);
+        // }
+        // Vérifier l'existence des colonnes
+        // const colRes = await client.query(
+        //   `SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND table_schema = 'public'`,
+        //   [tableName]
+        // );
+        // const availableCols = colRes.rows.map((r) => r.column_name);
+        // for (const col of columns) {
+        //   if (!availableCols.includes(col)) {
+        //     await client.end();
+        //     throw new Error(`Colonne non trouvée dans la table : ${col}`);
+        //   }
+        // }
+        const colList = columns.map((c) => `"${c}"`).join(", ");
+        const res = await client.query(`SELECT ${colList} FROM "${tableName}"`);
+        dataRows = res.rows;
+        await client.end();
+      } else if (dialect === "sqlite") {
+        const sqlite3 = require("sqlite3");
+        const db = new sqlite3.Database(dbname);
+        // Vérifier l'existence de la table
+        // const tables = await new Promise((resolve, reject) => {
+        //   db.all("SELECT name FROM sqlite_master WHERE type='table'", (err, rows) => {
+        //     if (err) return reject(err);
+        //     resolve(rows.map((r) => r.name));
+        //   });
+        // });
+        // if (!tables.includes(tableName)) {
+        //   db.close();
+        //   throw new Error(`Table non trouvée : ${tableName}`);
+        // }
+        // Vérifier l'existence des colonnes
+        // const colRows = await new Promise((resolve, reject) => {
+        //   db.all(`PRAGMA table_info(\"${tableName}\")`, (err, rows) => {
+        //     if (err) return reject(err);
+        //     resolve(rows);
+        //   });
+        // });
+        // const availableCols = colRows.map((c) => c.name);
+        // for (const col of columns) {
+        //   if (!availableCols.includes(col)) {
+        //     db.close();
+        //     throw new Error(`Colonne non trouvée dans la table : ${col}`);
+        //   }
+        // }
+        dataRows = await new Promise((resolve, reject) => {
+          db.all(
+            `SELECT ${columns
+              .map((c) => `\"${c}\"`)
+              .join(", ")} FROM \"${tableName}\"`,
+            (err, rows) => {
+              db.close();
+              if (err) return reject(err);
+              resolve(rows);
+            }
+          );
+        });
+      } else {
+        throw new Error("Dialecte non supporté pour l'import initial");
+      }
+    } catch (err) {
+      throw new Error(
+        `Erreur lors de l'extraction des données : ${err.message}`
+      );
+    }
+  } else if (sourceType === "file") {
+    if (!metadata || !metadata.file_path || !metadata.fileFormat) {
+      throw new Error("Métadonnées de fichier incomplètes");
+    }
+    const fileStream = await minioClient.getObject(
+      BUCKET_NAME,
+      metadata.file_path
+    );
+    const fileBuffer = await streamToBuffer(fileStream);
+    let availableCols = [];
+    if (["csv", "txt"].includes(metadata.fileFormat)) {
+      const parsed = Papa.parse(fileBuffer.toString("utf8"), { header: true });
+      if (!parsed.data || parsed.data.length === 0) {
+        throw new Error("Aucune donnée trouvée dans le fichier");
+      }
+      availableCols = Object.keys(parsed.data[0]);
+      for (const col of columns) {
+        if (!availableCols.includes(col)) {
+          throw new Error(`Colonne non trouvée dans le fichier : ${col}`);
+        }
+      }
+      dataRows = parsed.data.map((row) => {
+        const filtered = {};
+        columns.forEach((col) => {
+          filtered[col] = row[col];
+        });
+        return filtered;
+      });
+    } else if (["xls", "xlsx"].includes(metadata.fileFormat)) {
+      const workbook = XLSX.read(fileBuffer, { type: "buffer" });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const json = XLSX.utils.sheet_to_json(sheet);
+      if (!json || json.length === 0) {
+        throw new Error("Aucune donnée trouvée dans le fichier Excel");
+      }
+      availableCols = Object.keys(json[0]);
+      for (const col of columns) {
+        if (!availableCols.includes(col)) {
+          throw new Error(`Colonne non trouvée dans le fichier : ${col}`);
+        }
+      }
+      dataRows = json.map((row) => {
+        const filtered = {};
+        columns.forEach((col) => {
+          filtered[col] = row[col];
+        });
+        return filtered;
+      });
+    } else {
+      throw new Error("Format de fichier non supporté pour l'import initial");
+    }
+  } else {
+    throw new Error("Type de source non supporté pour l'import initial");
+  }
+  // Générer le CSV
+  const csv = Papa.unparse(dataRows);
+  filePath = `dataworkspace/processingstates/${userId}/source_${sourceId}_processing_v0_${generateTimestamp()}.csv`;
+  await minioClient.putObject(BUCKET_NAME, filePath, Buffer.from(csv, "utf8"));
+  // Créer l'entrée ProcessingStates
+  const state = await ProcessingStates.create({
+    non_final_source_id: sourceId,
+    parent_state_id: null,
+    version: 0,
+    is_current: true,
+    file_path: filePath,
+    file_format: "csv",
+    transformation_type: "initial_import",
+    transformation_parameters: transformationParameters,
+  });
+  return { success: true, state_id: state.state_id, file_path: filePath };
+};
+
+// Récupère l'état initial (version 0) d'une source, lit le CSV et retourne le JSON (avec limite/offset)
+const getInitialStateAsJson = async ({
+  userId,
+  sourceId,
+  limit = 100,
+  offset = 0,
+}) => {
+  // Chercher l'état version 0 le plus récent pour la source
+  const state = await ProcessingStates.findOne({
+    where: {
+      non_final_source_id: sourceId,
+      version: 0,
+    },
+    order: [["created_at", "DESC"]],
+  });
+  if (!state)
+    throw new Error("Aucun état initial (version 0) trouvé pour cette source");
+  if (!state.file_path) throw new Error("Aucun fichier associé à cet état");
+  // Récupérer le fichier CSV depuis MinIO
+  const fileStream = await minioClient.getObject(BUCKET_NAME, state.file_path);
+  const fileBuffer = await streamToBuffer(fileStream);
+  // Gérer le BOM éventuel
+  let csvString = fileBuffer.toString("utf8");
+  if (csvString.charCodeAt(0) === 0xfeff) csvString = csvString.slice(1);
+  // Parser le CSV
+  const parsed = Papa.parse(csvString, { header: true });
+  if (!parsed.data || parsed.data.length === 0) {
+    return {
+      success: true,
+      data: [],
+      total: 0,
+      limit,
+      offset,
+      columns: parsed.meta.fields || [],
+      table: state.transformation_parameters?.table || null,
+    };
+  }
+  // Pagination
+  const total = parsed.data.length;
+  const paginated = parsed.data.slice(offset, offset + limit);
+  return {
+    success: true,
+    state_id: state.state_id,
+    table: state.transformation_parameters?.table || null,
+    columns: parsed.meta.fields || [],
+    data: paginated,
+    total,
+    limit,
+    offset,
+  };
+};
+
+// Prévisualise les données d'une source (DB ou fichier) pour les colonnes sélectionnées, sans créer d'état.
+const previewSelectedColumns = async ({
+  userId,
+  sourceId,
+  columns,
+  tableName = null,
+  limit = 100,
+  offset = 0,
+}) => {
+  if (!Array.isArray(columns) || columns.length === 0) {
+    throw new Error("Aucune colonne sélectionnée");
+  }
+  const source = await NonFinalSources.findOne({
+    where: { non_final_source_id: sourceId, user_id: userId },
+  });
+  if (!source) throw new Error("Source non trouvée");
+  const sourceType = source.source_type;
+  const metadata = source.metadata;
+  let dataRows = [];
+  let columnsAvailable = [];
+  let table = tableName || null;
+  if (sourceType === "database") {
+    if (tableName && !isValidDbIdentifier(tableName)) {
+      throw new Error("Nom de table invalide (caractères non autorisés)");
+    }
+    for (const col of columns) {
+      if (!isValidDbIdentifier(col)) {
+        throw new Error(`Nom de colonne invalide : ${col}`);
+      }
+    }
+    if (!tableName)
+      throw new Error("Le nom de la table est requis pour une base de données");
+    const { host, port, dialect, username, password, dbname } = metadata;
+    let decryptedUsername =
+      typeof username === "object" ? decrypt(username) : username;
+    let decryptedPassword =
+      typeof password === "object" ? decrypt(password) : password;
+    try {
+      if (dialect === "mysql" || dialect === "mariadb") {
+        const mysql = require("mysql2/promise");
+        const connection = await mysql.createConnection({
+          host,
+          port,
+          user: decryptedUsername,
+          password: decryptedPassword,
+          database: dbname,
+        });
+        const [columnsInfo] = await connection.query(
+          `SHOW COLUMNS FROM \`${tableName}\``
+        );
+        columnsAvailable = columnsInfo.map((c) => c.Field);
+        for (const col of columns) {
+          if (!columnsAvailable.includes(col)) {
+            await connection.end();
+            throw new Error(`Colonne non trouvée dans la table : ${col}`);
+          }
+        }
+        const colList = columns.map((c) => `\`${c}\``).join(", ");
+        const [rows] = await connection.query(
+          `SELECT ${colList} FROM \`${tableName}\` LIMIT ? OFFSET ?`,
+          [limit, offset]
+        );
+        dataRows = rows;
+        await connection.end();
+      } else if (dialect === "postgres") {
+        const { Client } = require("pg");
+        const client = new Client({
+          host,
+          port,
+          user: decryptedUsername,
+          password: decryptedPassword,
+          database: dbname,
+        });
+        await client.connect();
+        const colRes = await client.query(
+          `SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND table_schema = 'public'`,
+          [tableName]
+        );
+        columnsAvailable = colRes.rows.map((r) => r.column_name);
+        for (const col of columns) {
+          if (!columnsAvailable.includes(col)) {
+            await client.end();
+            throw new Error(`Colonne non trouvée dans la table : ${col}`);
+          }
+        }
+        const colList = columns.map((c) => `"${c}"`).join(", ");
+        const res = await client.query(
+          `SELECT ${colList} FROM "${tableName}" LIMIT $1 OFFSET $2`,
+          [limit, offset]
+        );
+        dataRows = res.rows;
+        await client.end();
+      } else if (dialect === "sqlite") {
+        const sqlite3 = require("sqlite3");
+        const db = new sqlite3.Database(dbname);
+        const colRows = await new Promise((resolve, reject) => {
+          db.all(`PRAGMA table_info(\"${tableName}\")`, (err, rows) => {
+            if (err) return reject(err);
+            resolve(rows);
+          });
+        });
+        columnsAvailable = colRows.map((c) => c.name);
+        for (const col of columns) {
+          if (!columnsAvailable.includes(col)) {
+            db.close();
+            throw new Error(`Colonne non trouvée dans la table : ${col}`);
+          }
+        }
+        dataRows = await new Promise((resolve, reject) => {
+          db.all(
+            `SELECT ${columns
+              .map((c) => `\"${c}\"`)
+              .join(
+                ", "
+              )} FROM \"${tableName}\" LIMIT ${limit} OFFSET ${offset}`,
+            (err, rows) => {
+              db.close();
+              if (err) return reject(err);
+              resolve(rows);
+            }
+          );
+        });
+      } else {
+        throw new Error("Dialecte non supporté pour la prévisualisation");
+      }
+    } catch (err) {
+      throw new Error(
+        `Erreur lors de l'extraction des données : ${err.message}`
+      );
+    }
+  } else if (sourceType === "file") {
+    if (!metadata || !metadata.file_path || !metadata.fileFormat) {
+      throw new Error("Métadonnées de fichier incomplètes");
+    }
+    const fileStream = await minioClient.getObject(
+      BUCKET_NAME,
+      metadata.file_path
+    );
+    const fileBuffer = await streamToBuffer(fileStream);
+    if (["csv", "txt"].includes(metadata.fileFormat)) {
+      const parsed = Papa.parse(fileBuffer.toString("utf8"), { header: true });
+      if (!parsed.data || parsed.data.length === 0) {
+        throw new Error("Aucune donnée trouvée dans le fichier");
+      }
+      columnsAvailable = Object.keys(parsed.data[0]);
+      for (const col of columns) {
+        if (!columnsAvailable.includes(col)) {
+          throw new Error(`Colonne non trouvée dans le fichier : ${col}`);
+        }
+      }
+      dataRows = parsed.data
+        .map((row) => {
+          const filtered = {};
+          columns.forEach((col) => {
+            filtered[col] = row[col];
+          });
+          return filtered;
+        })
+        .slice(offset, offset + limit);
+    } else if (["xls", "xlsx"].includes(metadata.fileFormat)) {
+      const workbook = XLSX.read(fileBuffer, { type: "buffer" });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const json = XLSX.utils.sheet_to_json(sheet);
+      if (!json || json.length === 0) {
+        throw new Error("Aucune donnée trouvée dans le fichier Excel");
+      }
+      columnsAvailable = Object.keys(json[0]);
+      for (const col of columns) {
+        if (!columnsAvailable.includes(col)) {
+          throw new Error(`Colonne non trouvée dans le fichier : ${col}`);
+        }
+      }
+      dataRows = json
+        .map((row) => {
+          const filtered = {};
+          columns.forEach((col) => {
+            filtered[col] = row[col];
+          });
+          return filtered;
+        })
+        .slice(offset, offset + limit);
+    } else {
+      throw new Error(
+        "Format de fichier non supporté pour la prévisualisation"
+      );
+    }
+  } else {
+    throw new Error("Type de source non supporté pour la prévisualisation");
+  }
+  return {
+    success: true,
+    table,
+    columns,
+    data: dataRows,
+    limit,
+    offset,
+    total: dataRows.length,
+  };
+};
+
+// Récupère l'historique des traitements pour un état donné (états enfants)
+const getProcessingStateHistory = async ({ stateId }) => {
+  if (!stateId) throw new Error("stateId requis");
+  const childStates = await ProcessingStates.findAll({
+    where: { parent_state_id: stateId },
+    attributes: [
+      "state_id",
+      "version",
+      "transformation_type",
+      "transformation_parameters",
+      "created_at",
+    ],
+    order: [["created_at", "ASC"]],
+  });
+  return {
+    success: true,
+    total: childStates.length,
+    states: childStates,
+  };
+};
+
 module.exports = {
   listDataSources,
   addDataSource,
@@ -1469,4 +1970,8 @@ module.exports = {
   listTablesOfDatabaseSource,
   listColumnsOfTable,
   listTablesWithColumnsAndCount,
+  createInitialProcessingState,
+  getInitialStateAsJson,
+  previewSelectedColumns,
+  getProcessingStateHistory,
 };

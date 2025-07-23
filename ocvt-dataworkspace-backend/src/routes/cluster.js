@@ -9,7 +9,7 @@ router.post(
   authMiddleware,
   requireRole(["ROLE_POINT_FOCAL"]),
   [
-    check("dataset_id").isInt().withMessage("ID du dataset invalide"),
+    check("state_id").isInt().withMessage("ID du dataset invalide"),
     check("algorithm")
       .isIn(["kmeans", "hierarchical", "dbscan", "optics"])
       .withMessage(
@@ -211,7 +211,7 @@ router.post(
     }
 
     const {
-      dataset_id,
+      state_id,
       algorithm,
       parameters,
       preprocessing,
@@ -225,7 +225,7 @@ router.post(
     try {
       const result = await clusterService.clusterDataset(
         userId,
-        dataset_id,
+        state_id,
         algorithm,
         parameters,
         preprocessing,

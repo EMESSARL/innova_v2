@@ -95,7 +95,7 @@ router.post(
   authMiddleware,
   requireRole(["ROLE_POINT_FOCAL"]),
   [
-    check("dataset_id").isInt().withMessage("ID du dataset invalide"),
+    check("state_id").isInt().withMessage("ID du dataset invalide"),
     check("output_format")
       .isIn(["csv", "excel", "json"])
       .withMessage(
@@ -128,14 +128,14 @@ router.post(
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { dataset_id, conditions, nested_conditions, output_format } =
+    const { state_id, conditions, nested_conditions, output_format } =
       req.body;
     const userId = req.user.id;
 
     try {
       const result = await filterService.filterDataset(
         userId,
-        dataset_id,
+        state_id,
         conditions,
         nested_conditions,
         output_format

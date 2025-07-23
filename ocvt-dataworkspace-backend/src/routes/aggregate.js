@@ -53,7 +53,7 @@ router.post(
   authMiddleware,
   requireRole(["ROLE_POINT_FOCAL"]),
   [
-    check("dataset_id").isInt().withMessage("ID du dataset invalide"),
+    check("state_id").isInt().withMessage("ID du dataset invalide"),
     check("group_by")
       .isArray()
       .withMessage("group_by doit être un tableau de chaînes")
@@ -126,14 +126,14 @@ router.post(
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { dataset_id, group_by, aggregations, having, output_format } =
+    const { state_id, group_by, aggregations, having, output_format } =
       req.body;
     const userId = req.user.id;
 
     try {
       const result = await aggregateService.aggregateDataset(
         userId,
-        dataset_id,
+        state_id,
         group_by,
         aggregations,
         having,

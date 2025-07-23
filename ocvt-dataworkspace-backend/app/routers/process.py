@@ -45,7 +45,7 @@ class Having(BaseModel):
 class ProcessParameters(BaseModel):
     """Paramètres pour le traitement du dataset."""
 
-    dataset_id: int
+    state_id: int
     operation: str
     conditions: list[Condition] | None = None
     nested_conditions: NestedConditions | None = None
@@ -130,7 +130,7 @@ def evaluate_condition(df: pd.DataFrame, condition: Condition) -> pd.Series:
             raise ValueError(
                 f"Type incompatible pour {condition.column} avec {condition.operator}"
             )
-    
+
         # Default return in case no condition matches
         raise ValueError("Aucune condition valide n'a été évaluée")
 
@@ -193,7 +193,7 @@ async def process_data(body: RequestBody) -> dict[str, Any]:
 
     # Vérifier l'accès au fichier
     file_info = next(
-        (f for f in metadata["files"] if f["dataset_id"] == params.dataset_id),
+        (f for f in metadata["files"] if f["state_id"] == params.state_id),
         None,
     )
     if not file_info:  # or not file_info["path"].startswith(f"datasets/{user_id}/"):
@@ -399,12 +399,14 @@ async def process_data(body: RequestBody) -> dict[str, Any]:
             )
 
     # Générer le chemin de sortie
+    version = metadata.get("version") + 1
+    source_id = metadata.get("source_id")
     gmt_plus_1 = timezone(timedelta(hours=1))
     timestamp = datetime.now(gmt_plus_1).strftime("%Y%m%d_%H%M%S")
     result_path = (
-        f"dataworkspace/transformed/{user_id}/transformed_{timestamp}.xlsx"
+        f"dataworkspace/processingstates/{user_id}/source_{source_id}_state_{params.state_id}_processing_v{version}_{timestamp}.xlsx"
         if params.output_format == "excel"
-        else f"dataworkspace/transformed/{user_id}/transformed_{timestamp}.{params.output_format}"
+        else f"dataworkspace/processingstates/{user_id}/source_{source_id}_state_{params.state_id}_processing_v{version}_{timestamp}.{params.output_format}"
     )
 
     # Sauvegarder le résultat

@@ -896,6 +896,131 @@ router.get(
   }
 );
 
+// Créer l'état initial (version 0) pour une source (DB ou fichier)
+router.post(
+  "/processing-states/initial",
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
+  [
+    check("sourceId").isInt().withMessage("ID de la source requis"),
+    check("columns").isArray({ min: 1 }).withMessage("Colonnes requises"),
+    check("tableName").optional().isString(),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+    const userId = req.user.id;
+    const { sourceId, columns, tableName } = req.body;
+    try {
+      const result = await dataworkspaceService.createInitialProcessingState({
+        userId,
+        sourceId,
+        columns,
+        tableName,
+      });
+      res.status(201).json(result);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// GET /processing-states/initial/:sourceId
+// Récupère l'état initial (version 0) d'une source, lit le CSV et retourne le JSON (avec limite/offset)
+router.get(
+  "/processing-states/initial/:sourceId",
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
+  [
+    param("sourceId").isInt().withMessage("ID de la source requis"),
+    query("limit").optional().isInt({ min: 1 }),
+    query("offset").optional().isInt({ min: 0 }),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+    const userId = req.user.id;
+    const sourceId = parseInt(req.params.sourceId);
+    const limit = req.query.limit ? parseInt(req.query.limit) : 100;
+    const offset = req.query.offset ? parseInt(req.query.offset) : 0;
+    try {
+      const result = await dataworkspaceService.getInitialStateAsJson({
+        userId,
+        sourceId,
+        limit,
+        offset,
+      });
+      res.status(200).json(result);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// POST /processing-states/preview
+// Prévisualise les données d'une source pour les colonnes sélectionnées (DB ou fichier)
+router.post(
+  "/processing-states/preview",
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
+  [
+    check("sourceId").isInt().withMessage("ID de la source requis"),
+    check("columns").isArray({ min: 1 }).withMessage("Colonnes requises"),
+    check("tableName").optional().isString(),
+    check("limit").optional().isInt({ min: 1 }),
+    check("offset").optional().isInt({ min: 0 }),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+    const userId = req.user.id;
+    const { sourceId, columns, tableName, limit, offset } = req.body;
+    try {
+      const result = await dataworkspaceService.previewSelectedColumns({
+        userId,
+        sourceId,
+        columns,
+        tableName,
+        limit,
+        offset,
+      });
+      res.status(200).json(result);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// GET /processing-states/:stateId/history
+// Récupère l'historique des traitements (états enfants d'un stateId)
+router.get(
+  "/processing-states/:stateId/history",
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
+  [param("stateId").isInt().withMessage("ID de l'état requis")],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+    const stateId = parseInt(req.params.stateId);
+    try {
+      const result = await dataworkspaceService.getProcessingStateHistory({
+        stateId,
+      });
+      res.status(200).json(result);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
 router.use("/clean", cleanRoutes);
 router.use("/filter", filterRoutes);
 router.use("/aggregate", aggregateRoutes);

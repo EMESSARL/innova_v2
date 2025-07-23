@@ -9,7 +9,7 @@ router.post(
   authMiddleware,
   requireRole(["ROLE_POINT_FOCAL"]),
   [
-    check("dataset_id").isInt().withMessage("ID du dataset invalide"),
+    check("state_id").isInt().withMessage("ID du dataset invalide"),
     check("target_column")
       .notEmpty()
       .withMessage("La colonne cible est requise"),
@@ -85,7 +85,7 @@ router.post(
     }
 
     const {
-      dataset_id,
+      state_id,
       target_column,
       prediction_type,
       model,
@@ -100,7 +100,7 @@ router.post(
     try {
       const result = await predictService.predictDataset(
         userId,
-        dataset_id,
+        state_id,
         target_column,
         prediction_type,
         model,

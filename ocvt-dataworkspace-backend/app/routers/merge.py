@@ -12,14 +12,14 @@ router = APIRouter()
 class Dataset(BaseModel):
     """Représente un dataset à fusionner."""
 
-    dataset_id: int
+    state_id: int
     path: str | None = None
 
 
 class MergeParameters(BaseModel):
     """Paramètres pour la fusion de datasets."""
 
-    datasets: list[Dataset]
+    state_ids: list[int]
     key_mappings: dict[int, str]
     merge_type: str
     output_format: str
@@ -63,17 +63,17 @@ async def merge_datasets(body: RequestBody) -> dict[str, Any]:
         raise HTTPException(
             status_code=400, detail=f"Type de fusion {params.merge_type} non supporté"
         )
-    if not all(ds.dataset_id in params.key_mappings for ds in params.datasets):
+    if not all(state_id in params.key_mappings for state_id in params.state_ids):
         raise HTTPException(
             status_code=400, detail="Clés de fusion manquantes pour certains datasets"
         )
-    if params.suffixes and len(params.suffixes) < len(params.datasets):
+    if params.suffixes and len(params.suffixes) < len(params.state_ids):
         raise HTTPException(status_code=400, detail="Nombre de suffixes insuffisant")
 
     # Charger les datasets depuis MinIO
     dfs: list[tuple[int, pd.DataFrame]] = []
     for file in metadata["files"]:
-        if file["dataset_id"] not in [ds.dataset_id for ds in params.datasets]:
+        if file["state_id"] not in params.state_ids:
             continue
         try:
             data = minio_client.download_file(file["path"])
@@ -87,26 +87,26 @@ async def merge_datasets(body: RequestBody) -> dict[str, Any]:
                 raise HTTPException(
                     status_code=400, detail=f"Format {file['format']} non supporté"
                 )
-            dfs.append((file["dataset_id"], df))  # Append tuple (dataset_id, DataFrame)
+            dfs.append((file["state_id"], df))  # Append tuple (state_id, DataFrame)
         except Exception as e:
             raise HTTPException(
                 status_code=400,
-                detail=f"Erreur lors du chargement du fichier {file['dataset_id']} : {str(e)}",
+                detail=f"Erreur lors du chargement du fichier {file['state_id']} : {str(e)}",
             )
 
     # Vérifier la présence des colonnes de fusion
-    for dataset_id, df in dfs:
-        key = params.key_mappings.get(dataset_id)
+    for state_id, df in dfs:
+        key = params.key_mappings.get(state_id)
         if key not in df.columns:
             raise HTTPException(
                 status_code=400,
-                detail=f"Clé {key} introuvable dans le dataset {dataset_id}",
+                detail=f"Clé {key} introuvable dans le dataset {state_id}",
             )
 
     # Fusionner les datasets
     try:
         result_df = dfs[0][1]  # Premier dataset
-        suffixes = params.suffixes or [f"_{i}" for i in range(len(dfs))]
+        suffixes = params.suffixes or [f"_{i + 1}" for i in range(len(dfs))]
         if params.merge_type == "inner":
             how = "inner"
         elif params.merge_type == "left":
@@ -117,9 +117,9 @@ async def merge_datasets(body: RequestBody) -> dict[str, Any]:
             how = "outer"
         else:
             how = "inner"  # Par défaut, si type de fusion non reconnu
-        for i, (dataset_id, df) in enumerate(dfs[1:], 1):
+        for i, (state_id, df) in enumerate(dfs[1:], 1):
             key1 = params.key_mappings[dfs[0][0]]
-            key2 = params.key_mappings[dataset_id]
+            key2 = params.key_mappings[state_id]
             result_df = result_df.merge(
                 df,
                 how=how,
@@ -141,12 +141,14 @@ async def merge_datasets(body: RequestBody) -> dict[str, Any]:
         cleaning_summary = {"duplicates_removed": initial_rows - len(result_df)}
 
         # Générer le chemin de sortie
+        version = metadata.get("version") + 1
+        source_id = metadata.get("source_id")
         gmt_plus_1 = timezone(timedelta(hours=1))
         timestamp = datetime.now(gmt_plus_1).strftime("%Y%m%d_%H%M%S")
         result_path = (
-            f"dataworkspace/transformed/{user_id}/transformed_{timestamp}.xlsx"
+            f"dataworkspace/processingstates/{user_id}/source_{source_id}_state_{params.state_ids[0]}_processing_v{version}_{timestamp}.xlsx"
             if params.output_format == "excel"
-            else f"dataworkspace/transformed/{user_id}/transformed_{timestamp}.{params.output_format}"
+            else f"dataworkspace/processingstates/{user_id}/source_{source_id}_state_{params.state_ids[0]}_processing_v{version}_{timestamp}.{params.output_format}"
         )
 
         # Sauvegarder le résultat

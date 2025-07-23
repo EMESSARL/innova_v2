@@ -9,7 +9,7 @@ router.post(
   authMiddleware,
   requireRole(["ROLE_POINT_FOCAL"]),
   [
-    check("dataset_id").isInt().withMessage("ID du dataset invalide"),
+    check("state_id").isInt().withMessage("ID du dataset invalide"),
     check("new_column_name")
       .notEmpty()
       .withMessage("Le nom de la nouvelle colonne est requis"),
@@ -55,7 +55,7 @@ router.post(
     }
 
     const {
-      dataset_id,
+      state_id,
       new_column_name,
       formula,
       custom_functions,
@@ -68,7 +68,7 @@ router.post(
     try {
       const result = await calculateService.calculateColumn(
         userId,
-        dataset_id,
+        state_id,
         new_column_name,
         formula,
         custom_functions,
