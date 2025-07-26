@@ -1932,6 +1932,16 @@ const previewSelectedColumns = async ({
 // Récupère l'historique des traitements pour un état donné (états enfants)
 const getProcessingStateHistory = async ({ stateId }) => {
   if (!stateId) throw new Error("stateId requis");
+  const state = await ProcessingStates.findOne({
+    where: { state_id: stateId },
+    attributes: [
+      "state_id",
+      "version",
+      "transformation_type",
+      "transformation_parameters",
+      "created_at",
+    ],
+  });
   const childStates = await ProcessingStates.findAll({
     where: { parent_state_id: stateId },
     attributes: [
@@ -1943,10 +1953,13 @@ const getProcessingStateHistory = async ({ stateId }) => {
     ],
     order: [["created_at", "ASC"]],
   });
+  const history = childStates.concat(state).sort((a, b) => {
+    return a.version - b.version;
+  });
   return {
     success: true,
-    total: childStates.length,
-    states: childStates,
+    total: history.length,
+    states: history,
   };
 };
 
