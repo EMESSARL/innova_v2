@@ -1021,6 +1021,40 @@ router.get(
   }
 );
 
+// GET /processing-states/contents/:stateId
+// Récupère le contenu d'un état de traitement (JSON ou CSV)
+router.get(
+  "/processing-states/contents/:stateId",
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
+  [
+    param("stateId").isInt().withMessage("ID de l'état requis"),
+    // query("limit").optional().isInt({ min: 1 }),
+    // query("offset").optional().isInt({ min: 0 }),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+    // const userId = req.user.id;
+    const stateId = parseInt(req.params.stateId);
+    // const limit = req.query.limit ? parseInt(req.query.limit) : 100;
+    // const offset = req.query.offset ? parseInt(req.query.offset) : 0;
+    try {
+      const result = await dataworkspaceService.getStateContentsAsJson({
+        // userId,
+        stateId,
+        // limit,
+        // offset,
+      });
+      res.status(200).json(result);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
 router.use("/clean", cleanRoutes);
 router.use("/filter", filterRoutes);
 router.use("/aggregate", aggregateRoutes);

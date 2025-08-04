@@ -1963,6 +1963,71 @@ const getProcessingStateHistory = async ({ stateId }) => {
   };
 };
 
+// Récupère le contenu d'un état sous forme de JSON
+const getStateContentsAsJson = async ({
+  // userId,
+  stateId,
+  // limit = 100,
+  // offset = 0,
+}) => {
+  // Chercher l'état par son ID
+  const state = await ProcessingStates.findOne({
+    where: { state_id: stateId },
+    order: [["created_at", "DESC"]],
+  });
+  if (!state) throw new Error("Aucun état trouvé pour cet ID");
+  if (!state.file_path) throw new Error("Aucun fichier associé à cet état");
+  // Récupérer le fichier depuis MinIO
+  const fileStream = await minioClient.getObject(BUCKET_NAME, state.file_path);
+  const fileBuffer = await streamToBuffer(fileStream);
+  let data = [];
+  let columns = [];
+  let table = state.transformation_parameters?.table || null;
+  let total = 0;
+  // Détection du format
+  const format = state.file_format ? state.file_format.toLowerCase() : "csv";
+  if (format === "csv" || format === "txt") {
+    let csvString = fileBuffer.toString("utf8");
+    if (csvString.charCodeAt(0) === 0xfeff) csvString = csvString.slice(1);
+    const parsed = Papa.parse(csvString, { header: true });
+    data = parsed.data || [];
+    columns = parsed.meta.fields || [];
+    total = data.length;
+  } else if (format === "excel" || format === "xls" || format === "xlsx") {
+    const XLSX = require("xlsx");
+    const workbook = XLSX.read(fileBuffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    data = XLSX.utils.sheet_to_json(sheet);
+    columns = data.length > 0 ? Object.keys(data[0]) : [];
+    total = data.length;
+  } else if (format === "json" || format === "geojson") {
+    data = JSON.parse(fileBuffer.toString("utf8"));
+    if (Array.isArray(data)) {
+      columns = data.length > 0 ? Object.keys(data[0]) : [];
+      total = data.length;
+    } else if (data && typeof data === "object") {
+      columns = Object.keys(data);
+      total = 1;
+      data = [data];
+    } else {
+      columns = [];
+      total = 0;
+      data = [];
+    }
+  } else {
+    throw new Error("Format de fichier non supporté pour la lecture de l'état");
+  }
+  return {
+    success: true,
+    state_id: state.state_id,
+    table,
+    columns,
+    data,
+    total,
+  };
+};
+
 module.exports = {
   listDataSources,
   addDataSource,
@@ -1987,4 +2052,5 @@ module.exports = {
   getInitialStateAsJson,
   previewSelectedColumns,
   getProcessingStateHistory,
+  getStateContentsAsJson,
 };
