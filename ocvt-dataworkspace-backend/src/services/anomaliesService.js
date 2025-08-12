@@ -95,6 +95,7 @@ const detectAnomalies = async (
         auto_algorithm_selection: autoAlgorithmSelection,
         anomaly_threshold: anomalyThreshold,
         ...resultMetadata,
+        ...previousState.transformation_parameters,
       },
     });
 

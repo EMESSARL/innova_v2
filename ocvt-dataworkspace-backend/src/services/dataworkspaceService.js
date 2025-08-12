@@ -2028,6 +2028,47 @@ const getStateContentsAsJson = async ({
   };
 };
 
+// Récupère l'historique complet des traitements pour une source non-finale
+const getFullProcessingHistory = async (nonFinalSourceId) => {
+  // Récupérer tous les états initiaux (version 0)
+  const initialStates = await ProcessingStates.findAll({
+    where: { non_final_source_id: nonFinalSourceId, version: 0 },
+    order: [["created_at", "ASC"]],
+  });
+
+  // Fonction récursive pour récupérer les enfants
+  const fetchChildren = async (parentStateId) => {
+    const children = await ProcessingStates.findAll({
+      where: { parent_state_id: parentStateId },
+      order: [["created_at", "ASC"]],
+    });
+    return Promise.all(
+      children.map(async (child) => ({
+        state_id: child.state_id,
+        version: child.version,
+        transformation_type: child.transformation_type,
+        transformation_parameters: child.transformation_parameters,
+        created_at: child.created_at,
+        children: await fetchChildren(child.state_id),
+      }))
+    );
+  };
+
+  // Construire l'arbre pour chaque état initial
+  const history = await Promise.all(
+    initialStates.map(async (state) => ({
+      state_id: state.state_id,
+      version: state.version,
+      transformation_type: state.transformation_type,
+      transformation_parameters: state.transformation_parameters,
+      created_at: state.created_at,
+      children: await fetchChildren(state.state_id),
+    }))
+  );
+
+  return { success: true, history };
+};
+
 module.exports = {
   listDataSources,
   addDataSource,
@@ -2053,4 +2094,5 @@ module.exports = {
   previewSelectedColumns,
   getProcessingStateHistory,
   getStateContentsAsJson,
+  getFullProcessingHistory,
 };

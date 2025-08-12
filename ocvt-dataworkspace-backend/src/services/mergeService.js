@@ -103,6 +103,7 @@ const mergeDatasets = async (
         duplicate_handling: duplicateHandling,
         suffixes: suffixes,
         ...resultMetadata,
+        ...previousState.transformation_parameters,
       },
     });
 

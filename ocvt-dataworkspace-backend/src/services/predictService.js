@@ -101,6 +101,7 @@ const predictDataset = async (
         auto_model_selection: autoModelSelection,
         confidence: confidence,
         ...resultMetadata,
+        ...previousState.transformation_parameters,
       },
     });
 

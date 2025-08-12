@@ -83,7 +83,11 @@ const cleanDataset = async (
       file_path: result_path,
       file_format: outputFormat,
       transformation_type: "clean",
-      transformation_parameters: { ...cleaningActions, ...resultMetadata },
+      transformation_parameters: {
+        ...cleaningActions,
+        ...resultMetadata,
+        ...previousState.transformation_parameters,
+      },
     });
 
     return {

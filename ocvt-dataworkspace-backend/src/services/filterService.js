@@ -87,6 +87,7 @@ const filterDataset = async (
         conditions,
         nested_conditions: nestedConditions,
         ...resultMetadata,
+        ...previousState.transformation_parameters,
       },
     });
 

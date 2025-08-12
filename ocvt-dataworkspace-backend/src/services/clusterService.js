@@ -98,6 +98,7 @@ const clusterDataset = async (
         auto_cluster_selection: autoClusterSelection,
         metrics: metrics,
         ...resultMetadata,
+        ...previousState.transformation_parameters,
       },
     });
 

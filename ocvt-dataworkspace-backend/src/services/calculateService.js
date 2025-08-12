@@ -95,6 +95,7 @@ const calculateColumn = async (
         tests: tests,
         overwrite: overwrite,
         ...resultMetadata,
+        ...previousState.transformation_parameters,
       },
     });
 

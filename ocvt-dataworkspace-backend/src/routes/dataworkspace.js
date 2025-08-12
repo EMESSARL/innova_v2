@@ -1055,6 +1055,30 @@ router.get(
   }
 );
 
+// GET /processing-history/:nonFinalSourceId
+// Récupère l'historique complet des traitements pour une source non-finale
+router.get(
+  "/processing-history/:nonFinalSourceId",
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
+  [param("nonFinalSourceId").isInt().withMessage("ID de la source requis")],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+    const nonFinalSourceId = parseInt(req.params.nonFinalSourceId);
+    try {
+      const result = await dataworkspaceService.getFullProcessingHistory(
+        nonFinalSourceId
+      );
+      res.status(200).json(result);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
 router.use("/clean", cleanRoutes);
 router.use("/filter", filterRoutes);
 router.use("/aggregate", aggregateRoutes);

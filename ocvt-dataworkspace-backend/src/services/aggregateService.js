@@ -90,6 +90,7 @@ const aggregateDataset = async (
         aggregations,
         having,
         ...resultMetadata,
+        ...previousState.transformation_parameters,
       },
     });
 
