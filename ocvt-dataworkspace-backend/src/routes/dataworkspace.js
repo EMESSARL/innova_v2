@@ -11,6 +11,9 @@ const calculateRoutes = require("./calculate");
 const predictRoutes = require("./predict");
 const anomaliesRoutes = require("./anomalies");
 const clusterRoutes = require("./cluster");
+const dashboardRoutes = require("./dashboards");
+const validationRoutes = require("./validator");
+const publicationRoutes = require("./publisher");
 const multer = require("multer");
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -1087,5 +1090,8 @@ router.use("/predict", predictRoutes);
 router.use("/anomalies", anomaliesRoutes);
 router.use("/cluster", clusterRoutes);
 router.use("/merge", mergeRoutes);
+router.use("/dashboards", dashboardRoutes);
+router.use("/validation", validationRoutes);
+router.use("/publication", publicationRoutes);
 
 module.exports = router;

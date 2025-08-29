@@ -2,11 +2,56 @@ const sequelize = require("../config/db");
 const FinalResults = require("./FinalResults");
 const NonFinalSources = require("./NonFinalSources");
 const ProcessingStates = require("./ProcessingStates");
-const Submissions = require("./submissions");
 const SourceTypes = require("./sourceTypes");
 const SupportedFileExtensions = require("./supportedFileExtensions");
 const SupportedDatabaseTypes = require("./supportedDatabaseTypes");
 const SupportedCharts = require("./supportedCharts");
+
+// Nouveaux modèles pour le système de dashboards
+const Status = require("./Status");
+const ItemType = require("./ItemType");
+const File = require("./File");
+const Dashboard = require("./Dashboard");
+const DashboardItem = require("./DashboardItem");
+const Validation = require("./Validation");
+const Publication = require("./Publication");
+const DashboardFile = require("./DashboardFile");
+// const { initializeStatuses, initializeItemTypes } = require("./initializeDashboardData");
+
+// Définition des associations
+// Dashboard -> Status (Many-to-One)
+Dashboard.belongsTo(Status, { foreignKey: "status_id", as: "status" });
+Status.hasMany(Dashboard, { foreignKey: "status_id", as: "dashboards" });
+
+// Dashboard -> DashboardItem (One-to-Many)
+Dashboard.hasMany(DashboardItem, { foreignKey: "dashboard_id", as: "items", onDelete: "CASCADE" });
+DashboardItem.belongsTo(Dashboard, { foreignKey: "dashboard_id", as: "dashboard" });
+
+// DashboardItem -> ItemType (Many-to-One)
+DashboardItem.belongsTo(ItemType, { foreignKey: "item_type_id", as: "itemType" });
+ItemType.hasMany(DashboardItem, { foreignKey: "item_type_id", as: "dashboardItems" });
+
+// Dashboard -> Validation (One-to-Many)
+Dashboard.hasMany(Validation, { foreignKey: "dashboard_id", as: "validations" });
+Validation.belongsTo(Dashboard, { foreignKey: "dashboard_id", as: "dashboard" });
+
+// Dashboard -> Publication (One-to-One)
+Dashboard.hasOne(Publication, { foreignKey: "dashboard_id", as: "publication" });
+Publication.belongsTo(Dashboard, { foreignKey: "dashboard_id", as: "dashboard" });
+
+// Dashboard <-> File (Many-to-Many via DashboardFile)
+Dashboard.belongsToMany(File, { 
+  through: DashboardFile, 
+  foreignKey: "dashboard_id", 
+  otherKey: "file_id",
+  as: "files"
+});
+File.belongsToMany(Dashboard, { 
+  through: DashboardFile, 
+  foreignKey: "file_id", 
+  otherKey: "dashboard_id",
+  as: "dashboards"
+});
 
 (async () => {
   await sequelize.sync({ alter: true, logging: false });
@@ -218,6 +263,9 @@ async function initializeCharts() {
   await initializeExtensions();
   await initializeDatabaseTypes();
   await initializeCharts();
+  // Initialisation des données de dashboard
+  // await initializeStatuses();
+  // await initializeItemTypes();
 })();
 
 // Exporter les modèles et Sequelize
@@ -226,9 +274,18 @@ module.exports = {
   FinalResults,
   NonFinalSources,
   ProcessingStates,
-  Submissions,
+  // Submissions,
   SourceTypes,
   SupportedFileExtensions,
   SupportedDatabaseTypes,
   SupportedCharts,
+  // Nouveaux modèles
+  Status,
+  ItemType,
+  File,
+  Dashboard,
+  DashboardItem,
+  Validation,
+  Publication,
+  DashboardFile,
 };
