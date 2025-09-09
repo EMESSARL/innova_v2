@@ -27,6 +27,16 @@ const Dashboard = sequelize.define(
       allowNull: false,
       comment: "Keycloak user_id",
     },
+    domain_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: "FK vers Domain.id",
+    },
+    subdomain_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: "FK vers SubDomain.id",
+    },
     created_at: {
       type: DataTypes.DATE,
       allowNull: false,

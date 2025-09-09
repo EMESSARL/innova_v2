@@ -3,6 +3,8 @@ const router = express.Router();
 const { check, validationResult } = require("express-validator");
 const { authMiddleware, requireRole } = require("../middleware/auth");
 const dashboardService = require("../services/dashboardService");
+const ItemType = require("../models/ItemType");
+const Status = require("../models/Status");
 
 // Middleware pour extraire l'ID utilisateur depuis le token JWT
 const extractUserId = (req, res, next) => {
@@ -55,6 +57,14 @@ router.post(
       .optional()
       .isString()
       .withMessage("La description doit être une chaîne de caractères"),
+    check("domain_id")
+    .optional()
+      .isInt({ min: 1 })
+      .withMessage("L'ID du domaine doit être un entier positif"),
+    check("subdomain_id")
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage("L'ID du sous-domaine doit être un entier positif"),
   ],
   handleValidationErrors,
   async (req, res) => {
@@ -66,6 +76,28 @@ router.post(
       res.status(201).json(result);
     } catch (error) {
       console.error("Erreur lors de la création du dashboard:", error);
+
+      if (error.message === "Domaine non trouvé") {
+        return res.status(400).json({
+          success: false,
+          error: "Domaine non trouvé",
+        });
+      }
+
+      if (error.message === "Sous-domaine non trouvé") {
+        return res.status(400).json({
+          success: false,
+          error: "Sous-domaine non trouvé",
+        });
+      }
+
+      if (error.message.includes("n'appartient pas au domaine")) {
+        return res.status(400).json({
+          success: false,
+          error: error.message,
+        });
+      }
+
       res.status(500).json({
         success: false,
         error: "Erreur lors de la création du dashboard",
@@ -159,6 +191,14 @@ router.put(
       .optional()
       .isString()
       .withMessage("La description doit être une chaîne de caractères"),
+    check("domain_id")
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage("L'ID du domaine doit être un entier positif"),
+    check("subdomain_id")
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage("L'ID du sous-domaine doit être un entier positif"),
   ],
   handleValidationErrors,
   async (req, res) => {
@@ -187,6 +227,27 @@ router.put(
       }
 
       if (error.message.includes("ne peut pas être modifié")) {
+        return res.status(400).json({
+          success: false,
+          error: error.message,
+        });
+      }
+
+      if (error.message === "Domaine non trouvé") {
+        return res.status(400).json({
+          success: false,
+          error: "Domaine non trouvé",
+        });
+      }
+
+      if (error.message === "Sous-domaine non trouvé") {
+        return res.status(400).json({
+          success: false,
+          error: "Sous-domaine non trouvé",
+        });
+      }
+
+      if (error.message.includes("n'appartient pas au domaine")) {
         return res.status(400).json({
           success: false,
           error: error.message,
@@ -567,6 +628,48 @@ router.post(
       res.status(500).json({
         success: false,
         error: "Erreur lors de l'upload du fichier",
+        message: error.message,
+      });
+    }
+  }
+);
+
+// GET /dashboards/get/item_types - Récupérer la liste des types d'items
+router.get(
+  "/get/item_types",
+  // authMiddleware,
+  // requireRole(["dashboard-creator"]),
+  extractUserId,
+  async (req, res) => {
+    try {
+      const result = await dashboardService.getItemTypes();
+      res.json(result);
+    } catch (error) {
+      console.error("Erreur lors de la récupération des types d'items:", error);
+      res.status(500).json({
+        success: false,
+        error: "Erreur lors de la récupération des types d'items",
+        message: error.message,
+      });
+    }
+  }
+);
+
+// GET /dashboards/get/statuses - Récupérer la liste des statuts
+router.get(
+  "/get/statuses",
+  // authMiddleware,
+  // requireRole(["dashboard-creator"]),
+  extractUserId,
+  async (req, res) => {
+    try {
+      const result = await dashboardService.getStatuses();
+      res.json(result);
+    } catch (error) {
+      console.error("Erreur lors de la récupération des statuts:", error);
+      res.status(500).json({
+        success: false,
+        error: "Erreur lors de la récupération des statuts",
         message: error.message,
       });
     }

@@ -8,6 +8,8 @@ const {
   DashboardFile,
   Validation,
   Publication,
+  Domain,
+  SubDomain,
   sequelize,
 } = require("../models");
 
@@ -28,6 +30,26 @@ class DashboardService {
         throw new Error("Statut DRAFT non trouvé dans la base de données");
       }
 
+      // Vérifier que le domaine existe
+      const domain = await Domain.findByPk(dashboardData.domain_id);
+      if (!domain) {
+        throw new Error("Domaine non trouvé");
+      }
+
+      // Vérifier que le sous-domaine existe si fourni
+      if (dashboardData.subdomain_id) {
+        const subDomain = await SubDomain.findByPk(dashboardData.subdomain_id);
+        if (!subDomain) {
+          throw new Error("Sous-domaine non trouvé");
+        }
+        // Vérifier que le sous-domaine appartient au domaine
+        if (subDomain.domain_id !== dashboardData.domain_id) {
+          throw new Error(
+            "Le sous-domaine n'appartient pas au domaine spécifié"
+          );
+        }
+      }
+
       // Créer le dashboard
       const dashboard = await Dashboard.create(
         {
@@ -35,6 +57,8 @@ class DashboardService {
           description: dashboardData.description || null,
           status_id: draftStatus.id,
           owner_id: userId,
+          domain_id: dashboardData.domain_id,
+          subdomain_id: dashboardData.subdomain_id || null,
         },
         { transaction }
       );
@@ -49,6 +73,8 @@ class DashboardService {
           description: dashboard.description,
           status: "DRAFT",
           owner_id: dashboard.owner_id,
+          domain_id: dashboard.domain_id,
+          subdomain_id: dashboard.subdomain_id,
           created_at: dashboard.created_at,
         },
       };
@@ -78,6 +104,17 @@ class DashboardService {
             as: "status",
             attributes: ["code", "label", "description"],
           },
+          {
+            model: Domain,
+            as: "domain",
+            attributes: ["id", "name"],
+          },
+          {
+            model: SubDomain,
+            as: "subDomain",
+            attributes: ["id", "name"],
+            required: false,
+          },
         ],
         order: [["created_at", "DESC"]],
       });
@@ -90,6 +127,18 @@ class DashboardService {
           description: dashboard.description,
           status: dashboard.status.code,
           owner_id: dashboard.owner_id,
+          domain: dashboard.domain
+            ? {
+                id: dashboard.domain.id,
+                name: dashboard.domain.name,
+              }
+            : null,
+          subdomain: dashboard.subDomain
+            ? {
+                id: dashboard.subDomain.id,
+                name: dashboard.subDomain.name,
+              }
+            : null,
           created_at: dashboard.created_at,
           updated_at: dashboard.updated_at,
         })),
@@ -111,6 +160,17 @@ class DashboardService {
             model: Status,
             as: "status",
             attributes: ["code", "label", "description", "editable"],
+          },
+          {
+            model: Domain,
+            as: "domain",
+            attributes: ["id", "name"],
+          },
+          {
+            model: SubDomain,
+            as: "subDomain",
+            attributes: ["id", "name"],
+            required: false,
           },
           {
             model: DashboardItem,
@@ -154,6 +214,18 @@ class DashboardService {
           status: dashboard.status.code,
           owner_id: dashboard.owner_id,
           editable: dashboard.status.editable,
+          domain: dashboard.domain
+            ? {
+                id: dashboard.domain.id,
+                name: dashboard.domain.name,
+              }
+            : null,
+          subdomain: dashboard.subDomain
+            ? {
+                id: dashboard.subDomain.id,
+                name: dashboard.subDomain.name,
+              }
+            : null,
           created_at: dashboard.created_at,
           updated_at: dashboard.updated_at,
           items: dashboard.items.map((item) => ({
@@ -209,6 +281,28 @@ class DashboardService {
         );
       }
 
+      // Vérifier les domaines si fournis
+      if (updateData.domain_id) {
+        const domain = await Domain.findByPk(updateData.domain_id);
+        if (!domain) {
+          throw new Error("Domaine non trouvé");
+        }
+      }
+
+      if (updateData.subdomain_id) {
+        const subDomain = await SubDomain.findByPk(updateData.subdomain_id);
+        if (!subDomain) {
+          throw new Error("Sous-domaine non trouvé");
+        }
+        // Vérifier que le sous-domaine appartient au domaine
+        const targetDomainId = updateData.domain_id || dashboard.domain_id;
+        if (subDomain.domain_id !== targetDomainId) {
+          throw new Error(
+            "Le sous-domaine n'appartient pas au domaine spécifié"
+          );
+        }
+      }
+
       // Mettre à jour
       await dashboard.update(
         {
@@ -217,6 +311,11 @@ class DashboardService {
             updateData.description !== undefined
               ? updateData.description
               : dashboard.description,
+          domain_id: updateData.domain_id || dashboard.domain_id,
+          subdomain_id:
+            updateData.subdomain_id !== undefined
+              ? updateData.subdomain_id
+              : dashboard.subdomain_id,
         },
         { transaction }
       );
@@ -230,6 +329,8 @@ class DashboardService {
           title: dashboard.title,
           description: dashboard.description,
           status: dashboard.status.code,
+          domain_id: dashboard.domain_id,
+          subdomain_id: dashboard.subdomain_id,
           updated_at: dashboard.updated_at,
         },
       };
@@ -1413,6 +1514,55 @@ class DashboardService {
       };
     } catch (error) {
       await transaction.rollback();
+      throw error;
+    }
+  }
+
+  /**
+   * Récupère la liste des types d'items disponibles
+   */
+  async getItemTypes() {
+    try {
+      const itemTypes = await ItemType.findAll({
+        attributes: ["id", "name", "description", "default_config"],
+        order: [["name", "ASC"]],
+      });
+
+      return {
+        success: true,
+        data: itemTypes.map((itemType) => ({
+          id: itemType.id,
+          name: itemType.name,
+          description: itemType.description,
+          default_config: itemType.default_config,
+        })),
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Récupère la liste des statuts disponibles
+   */
+  async getStatuses() {
+    try {
+      const statuses = await Status.findAll({
+        attributes: ["id", "code", "label", "description", "editable"],
+        order: [["code", "ASC"]],
+      });
+
+      return {
+        success: true,
+        data: statuses.map((status) => ({
+          id: status.id,
+          code: status.code,
+          label: status.label,
+          description: status.description,
+          editable: status.editable,
+        })),
+      };
+    } catch (error) {
       throw error;
     }
   }

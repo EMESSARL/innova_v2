@@ -16,6 +16,8 @@ const DashboardItem = require("./DashboardItem");
 const Validation = require("./Validation");
 const Publication = require("./Publication");
 const DashboardFile = require("./DashboardFile");
+const Domain = require("./Domain");
+const SubDomain = require("./SubDomain");
 // const { initializeStatuses, initializeItemTypes } = require("./initializeDashboardData");
 
 // Définition des associations
@@ -24,34 +26,75 @@ Dashboard.belongsTo(Status, { foreignKey: "status_id", as: "status" });
 Status.hasMany(Dashboard, { foreignKey: "status_id", as: "dashboards" });
 
 // Dashboard -> DashboardItem (One-to-Many)
-Dashboard.hasMany(DashboardItem, { foreignKey: "dashboard_id", as: "items", onDelete: "CASCADE" });
-DashboardItem.belongsTo(Dashboard, { foreignKey: "dashboard_id", as: "dashboard" });
+Dashboard.hasMany(DashboardItem, {
+  foreignKey: "dashboard_id",
+  as: "items",
+  onDelete: "CASCADE",
+});
+DashboardItem.belongsTo(Dashboard, {
+  foreignKey: "dashboard_id",
+  as: "dashboard",
+});
 
 // DashboardItem -> ItemType (Many-to-One)
-DashboardItem.belongsTo(ItemType, { foreignKey: "item_type_id", as: "itemType" });
-ItemType.hasMany(DashboardItem, { foreignKey: "item_type_id", as: "dashboardItems" });
+DashboardItem.belongsTo(ItemType, {
+  foreignKey: "item_type_id",
+  as: "itemType",
+});
+ItemType.hasMany(DashboardItem, {
+  foreignKey: "item_type_id",
+  as: "dashboardItems",
+});
 
 // Dashboard -> Validation (One-to-Many)
-Dashboard.hasMany(Validation, { foreignKey: "dashboard_id", as: "validations" });
-Validation.belongsTo(Dashboard, { foreignKey: "dashboard_id", as: "dashboard" });
+Dashboard.hasMany(Validation, {
+  foreignKey: "dashboard_id",
+  as: "validations",
+});
+Validation.belongsTo(Dashboard, {
+  foreignKey: "dashboard_id",
+  as: "dashboard",
+});
 
 // Dashboard -> Publication (One-to-One)
-Dashboard.hasOne(Publication, { foreignKey: "dashboard_id", as: "publication" });
-Publication.belongsTo(Dashboard, { foreignKey: "dashboard_id", as: "dashboard" });
+Dashboard.hasOne(Publication, {
+  foreignKey: "dashboard_id",
+  as: "publication",
+});
+Publication.belongsTo(Dashboard, {
+  foreignKey: "dashboard_id",
+  as: "dashboard",
+});
 
 // Dashboard <-> File (Many-to-Many via DashboardFile)
-Dashboard.belongsToMany(File, { 
-  through: DashboardFile, 
-  foreignKey: "dashboard_id", 
+Dashboard.belongsToMany(File, {
+  through: DashboardFile,
+  foreignKey: "dashboard_id",
   otherKey: "file_id",
-  as: "files"
+  as: "files",
 });
-File.belongsToMany(Dashboard, { 
-  through: DashboardFile, 
-  foreignKey: "file_id", 
+File.belongsToMany(Dashboard, {
+  through: DashboardFile,
+  foreignKey: "file_id",
   otherKey: "dashboard_id",
-  as: "dashboards"
+  as: "dashboards",
 });
+
+// Domain -> SubDomain (One-to-Many)
+Domain.hasMany(SubDomain, {
+  foreignKey: "domain_id",
+  as: "subDomains",
+  onDelete: "CASCADE",
+});
+SubDomain.belongsTo(Domain, { foreignKey: "domain_id", as: "domain" });
+
+// Dashboard -> Domain (Many-to-One)
+Dashboard.belongsTo(Domain, { foreignKey: "domain_id", as: "domain" });
+Domain.hasMany(Dashboard, { foreignKey: "domain_id", as: "dashboards" });
+
+// Dashboard -> SubDomain (Many-to-One, optionnel)
+Dashboard.belongsTo(SubDomain, { foreignKey: "subdomain_id", as: "subDomain" });
+SubDomain.hasMany(Dashboard, { foreignKey: "subdomain_id", as: "dashboards" });
 
 (async () => {
   await sequelize.sync({ alter: true, logging: false });
@@ -97,12 +140,14 @@ async function initializeSourceTypes() {
 
     if (sequenceName) {
       // Réinitialiser la séquence si elle existe
-      await sequelize.query(
-        `SELECT setval($1, 1, false)`,
-        { bind: [sequenceName], transaction }
-      );
+      await sequelize.query(`SELECT setval($1, 1, false)`, {
+        bind: [sequenceName],
+        transaction,
+      });
     } else {
-      console.warn('Aucune séquence trouvée pour source_type_id. La table est peut-être mal configurée.');
+      console.warn(
+        "Aucune séquence trouvée pour source_type_id. La table est peut-être mal configurée."
+      );
       // Optionnel : Créer une séquence si nécessaire (voir ci-dessous)
     }
 
@@ -120,7 +165,12 @@ async function initializeSourceTypes() {
     console.log("Types de sources initiales insérées.");
   } catch (error) {
     await transaction.rollback();
-    console.error("Erreur lors de l'initialisation :", error.name, error.message, error.stack);
+    console.error(
+      "Erreur lors de l'initialisation :",
+      error.name,
+      error.message,
+      error.stack
+    );
   }
 }
 
@@ -288,4 +338,6 @@ module.exports = {
   Validation,
   Publication,
   DashboardFile,
+  Domain,
+  SubDomain,
 };
