@@ -18,12 +18,16 @@ const Domain = sequelize.define(
         len: [1, 255],
       },
     },
+    deleted_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
   },
   {
     tableName: "Domain",
-    timestamps: true,
-    createdAt: "created_at",
-    updatedAt: "updated_at",
+    timestamps: false,
+    paranoid: true,
+    underscored: true,
   }
 );
 

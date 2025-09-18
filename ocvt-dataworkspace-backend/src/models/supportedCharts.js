@@ -15,7 +15,7 @@ const SupportedCharts = sequelize.define(
       unique: true,
     },
     required_parameters: {
-      type: DataTypes.JSONB, // Pour stocker des structures de données complexes
+      type: DataTypes.JSONB,
       allowNull: true,
     },
     status: {
@@ -23,11 +23,16 @@ const SupportedCharts = sequelize.define(
       allowNull: false,
       defaultValue: "active",
     },
+    deleted_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
   },
   {
     tableName: "SupportedCharts",
-    createdAt: false,
-    updatedAt: false,
+    timestamps: false,
+    paranoid: true,
+    underscored: true,
   }
 );
 

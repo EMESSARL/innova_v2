@@ -19,11 +19,16 @@ const SupportedDatabaseTypes = sequelize.define(
       allowNull: false,
       defaultValue: "active",
     },
+    deleted_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
   },
   {
     tableName: "SupportedDatabaseTypes",
-    createdAt: false,
-    updatedAt: false,
+    timestamps: false,
+    paranoid: true,
+    underscored: true,
   }
 );
 

@@ -25,12 +25,16 @@ const FinalResults = sequelize.define(
       type: DataTypes.JSONB,
       allowNull: true,
     },
+    deleted_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
   },
   {
     tableName: "FinalResults",
     timestamps: true,
-    createdAt: "created_at",
-    updatedAt: "updated_at",
+    paranoid: true,
+    underscored: true,
   }
 );
 

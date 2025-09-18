@@ -30,10 +30,15 @@ const Publication = sequelize.define(
       allowNull: false,
       defaultValue: DataTypes.NOW,
     },
+    deleted_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
   },
   {
     tableName: "Publication",
     timestamps: false,
+    paranoid: true,
     underscored: true,
   }
 );

@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { check, validationResult } = require("express-validator");
-// const { authMiddleware, requireRole } = require("../middleware/auth");
+const { authMiddleware, requireRole } = require("../middleware/auth");
 const dashboardService = require("../services/dashboardService");
 
 // Middleware pour extraire l'ID utilisateur depuis le token JWT
@@ -37,32 +37,55 @@ const handleValidationErrors = (req, res, next) => {
   next();
 };
 
-// GET /dashboards?status=SUBMITTED - Récupérer les dashboards soumis pour validation
+// GET /dashboards
 router.get(
   "/dashboards",
   // authMiddleware,
-  // requireRole(["dashboard-validator"]),
+  // requireRole(["ROLE_VALIDATOR", "ROLE_ADMIN"]),
   extractUserId,
   async (req, res) => {
     try {
       // Vérifier que le statut demandé est SUBMITTED
-      if (req.query.status !== "SUBMITTED") {
-        return res.status(400).json({
-          success: false,
-          error: "Seul le statut SUBMITTED est autorisé pour les validateurs",
-        });
+      // if (req.query.status !== "SUBMITTED") {
+      //   return res.status(400).json({
+      //     success: false,
+      //     error: "Seul le statut SUBMITTED est autorisé pour les validateurs",
+      //   });
+      // }
+      if (req.query.status !== undefined) {
+        if (req.query.status === "SUBMITTED") {
+          const result = await dashboardService.getSubmittedDashboards(
+            req.userId
+          );
+          res.json(result);
+        } else if (req.query.status === "REJECTED") {
+          const result = await dashboardService.getRejectedDashboards(
+            req.userId
+          );
+          res.json(result);
+        } else if (req.query.status === "VALIDATED") {
+          const result = await dashboardService.getValidatedDashboards(
+            req.userId
+          );
+          res.json(result);
+        } else {
+          return res.status(400).json({
+            success: false,
+            error: "Seul le statut SUBMITTED, REJECTED ou VALIDATED est autorisé",
+          });
+        }
+      } else {
+        const result = await dashboardService.getAllDashboards(req.userId);
+        res.json(result);
       }
-
-      const result = await dashboardService.getSubmittedDashboards(req.userId);
-      res.json(result);
     } catch (error) {
       console.error(
-        "Erreur lors de la récupération des dashboards soumis:",
+        "Erreur lors de la récupération des dashboards:",
         error
       );
       res.status(500).json({
         success: false,
-        error: "Erreur lors de la récupération des dashboards soumis",
+        error: "Erreur lors de la récupération des dashboards",
         message: error.message,
       });
     }
@@ -72,8 +95,8 @@ router.get(
 // GET /dashboards/:id - Afficher un dashboard soumis en mode lecture seule
 router.get(
   "/dashboards/:id",
-  // authMiddleware,
-  // requireRole(["dashboard-validator"]),
+  authMiddleware,
+  requireRole(["ROLE_VALIDATOR", "ROLE_ADMIN"]),
   extractUserId,
   [check("id").isUUID().withMessage("ID de dashboard invalide")],
   handleValidationErrors,
@@ -81,7 +104,8 @@ router.get(
     try {
       const result = await dashboardService.getDashboardById(
         req.params.id,
-        req.userId
+        req.userId,
+        req.roles
       );
       res.json(result);
     } catch (error) {
@@ -113,8 +137,8 @@ router.get(
 // POST /dashboards/:id/validate - Valider, rejeter ou demander des modifications
 router.post(
   "/dashboards/:id/validate",
-  // authMiddleware,
-  // requireRole(["dashboard-validator"]),
+  authMiddleware,
+  requireRole(["ROLE_VALIDATOR"]),
   extractUserId,
   [
     check("id").isUUID().withMessage("ID de dashboard invalide"),
@@ -189,8 +213,8 @@ router.post(
 // PUT /dashboards/:id - Éditer un dashboard en statut REQUEST_UPDATE
 router.put(
   "/dashboards/:id",
-  // authMiddleware,
-  // requireRole(["dashboard-validator"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   extractUserId,
   [
     check("id").isUUID().withMessage("ID de dashboard invalide"),

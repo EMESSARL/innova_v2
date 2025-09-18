@@ -6,7 +6,7 @@ const domainService = require("../services/domainService");
 
 // Middleware pour extraire l'ID utilisateur depuis le token JWT
 const extractUserId = (req, res, next) => {
-  req.user = { id: "user123" }; // other_user_002
+  // req.user = { id: "user123" }; // other_user_002
   try {
     // Supposons que l'ID utilisateur est stocké dans req.user.id après l'authentification
     if (!req.user || !req.user.id) {
@@ -45,8 +45,8 @@ const handleValidationErrors = (req, res, next) => {
 // POST /domains - Créer un nouveau domaine
 router.post(
   "/",
-  // authMiddleware,
-  // requireRole(["admin"]),
+  authMiddleware,
+  requireRole(["ROLE_ADMIN"]),
   extractUserId,
   [
     check("name")
@@ -83,7 +83,8 @@ router.post(
 // GET /domains - Récupérer la liste de tous les domaines
 router.get(
   "/",
-  // authMiddleware,
+  authMiddleware,
+  requireRole(["ROLE_ADMIN","ROLE_POINT_FOCAL"]),
   extractUserId,
   async (req, res) => {
     try {
@@ -103,7 +104,8 @@ router.get(
 // GET /domains/:id - Récupérer un domaine par son ID
 router.get(
   "/:id",
-  // authMiddleware,
+  authMiddleware,
+  requireRole(["ROLE_ADMIN","ROLE_POINT_FOCAL"]),
   extractUserId,
   [check("id").isInt({ min: 1 }).withMessage("ID de domaine invalide")],
   handleValidationErrors,
@@ -133,8 +135,8 @@ router.get(
 // PUT /domains/:id - Mettre à jour un domaine
 router.put(
   "/:id",
-  // authMiddleware,
-  // requireRole(["admin"]),
+  authMiddleware,
+  requireRole(["ROLE_ADMIN"]),
   extractUserId,
   [
     check("id").isInt({ min: 1 }).withMessage("ID de domaine invalide"),
@@ -178,8 +180,8 @@ router.put(
 // DELETE /domains/:id - Supprimer un domaine
 router.delete(
   "/:id",
-  // authMiddleware,
-  // requireRole(["admin"]),
+  authMiddleware,
+  requireRole(["ROLE_ADMIN"]),
   extractUserId,
   [check("id").isInt({ min: 1 }).withMessage("ID de domaine invalide")],
   handleValidationErrors,
@@ -213,8 +215,8 @@ router.delete(
 // POST /subdomains - Créer un nouveau sous-domaine
 router.post(
   "/subdomains",
-  // authMiddleware,
-  // requireRole(["admin"]),
+  authMiddleware,
+  requireRole(["ROLE_ADMIN"]),
   extractUserId,
   [
     check("name")
@@ -263,7 +265,8 @@ router.post(
 // GET /subdomains - Récupérer la liste de tous les sous-domaines
 router.get(
   "/subdomains/get",
-  // authMiddleware,
+  authMiddleware,
+  requireRole(["ROLE_ADMIN","ROLE_POINT_FOCAL"]),
   extractUserId,
   async (req, res) => {
     try {
@@ -283,7 +286,8 @@ router.get(
 // GET /subdomains/:id - Récupérer un sous-domaine par son ID
 router.get(
   "/subdomains/:id",
-  // authMiddleware,
+  authMiddleware,
+  requireRole(["ROLE_ADMIN","ROLE_POINT_FOCAL"]),
   extractUserId,
   [check("id").isInt({ min: 1 }).withMessage("ID de sous-domaine invalide")],
   handleValidationErrors,
@@ -313,7 +317,8 @@ router.get(
 // GET /domains/:domainId/subdomains - Récupérer les sous-domaines d'un domaine spécifique
 router.get(
   "/:domainId/subdomains",
-  // authMiddleware,
+  authMiddleware,
+  requireRole(["ROLE_ADMIN","ROLE_POINT_FOCAL"]),
   extractUserId,
   [check("domainId").isInt({ min: 1 }).withMessage("ID de domaine invalide")],
   handleValidationErrors,
@@ -345,8 +350,8 @@ router.get(
 // PUT /subdomains/:id - Mettre à jour un sous-domaine
 router.put(
   "/subdomains/:id",
-  // authMiddleware,
-  // requireRole(["admin"]),
+  authMiddleware,
+  requireRole(["ROLE_ADMIN"]),
   extractUserId,
   [
     check("id").isInt({ min: 1 }).withMessage("ID de sous-domaine invalide"),
@@ -406,8 +411,8 @@ router.put(
 // DELETE /subdomains/:id - Supprimer un sous-domaine
 router.delete(
   "/subdomains/:id",
-  // authMiddleware,
-  // requireRole(["admin"]),
+  authMiddleware,
+  requireRole(["ROLE_ADMIN"]),
   extractUserId,
   [check("id").isInt({ min: 1 }).withMessage("ID de sous-domaine invalide")],
   handleValidationErrors,

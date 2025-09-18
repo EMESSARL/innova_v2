@@ -27,12 +27,16 @@ const SubDomain = sequelize.define(
       onUpdate: "CASCADE",
       onDelete: "CASCADE",
     },
+    deleted_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
   },
   {
     tableName: "SubDomain",
     timestamps: true,
-    createdAt: "created_at",
-    updatedAt: "updated_at",
+    paranoid: true,
+    underscored: true,
     indexes: [
       {
         unique: true,

@@ -151,7 +151,7 @@ class DashboardService {
   /**
    * Récupère les détails d'un dashboard spécifique
    */
-  async getDashboardById(dashboardId, userId) {
+  async getDashboardById(dashboardId, userId, userRoles) {
     try {
       const dashboard = await Dashboard.findOne({
         where: { id: dashboardId },
@@ -197,7 +197,11 @@ class DashboardService {
       }
 
       // Vérifier les permissions (propriétaire ou public)
-      if (dashboard.owner_id !== userId) {
+      if (
+        dashboard.owner_id !== userId &&
+        !userRoles.includes("ROLE_ADMIN") &&
+        !userRoles.includes("ROLE_VALIDATOR")
+      ) {
         // Vérifier si le dashboard est publié et public
         const publication = await dashboard.getPublication();
         if (!publication || publication.visibility !== "PUBLIC") {
@@ -959,7 +963,119 @@ class DashboardService {
           updated_at: dashboard.updated_at,
           items_count: dashboard.items.length,
           files_count: dashboard.files.length,
-          ready_for_publication: true,
+        })),
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Récupère les dashboards rejetés
+   */
+  async getRejectedDashboards(validatorId) {
+    try {
+      const rejectedStatus = await Status.findOne({
+        where: { code: "REJECTED" },
+      });
+
+      if (!rejectedStatus) {
+        throw new Error("Statut REJECTED non trouvé");
+      }
+
+      const dashboards = await Dashboard.findAll({
+        where: { status_id: rejectedStatus.id },
+        include: [
+          {
+            model: Status,
+            as: "status",
+            attributes: ["code", "label", "description"],
+          },
+          {
+            model: DashboardItem,
+            as: "items",
+            include: [
+              {
+                model: ItemType,
+                as: "itemType",
+                attributes: ["name", "description"],
+              },
+            ],
+            order: [["position", "ASC"]],
+          },
+          {
+            model: File,
+            as: "files",
+            attributes: ["id", "filename", "mime_type", "size"],
+          },
+        ],
+        order: [["created_at", "ASC"]],
+      });
+
+      return {
+        success: true,
+        data: dashboards.map((dashboard) => ({
+          id: dashboard.id,
+          title: dashboard.title,
+          description: dashboard.description,
+          status: dashboard.status.code,
+          owner_id: dashboard.owner_id,
+          created_at: dashboard.created_at,
+          updated_at: dashboard.updated_at,
+          items_count: dashboard.items.length,
+          files_count: dashboard.files.length,
+        })),
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Récupère tous les dashboards
+   */
+  async getAllDashboards(validatorId) {
+    try {
+      const dashboards = await Dashboard.findAll({
+        include: [
+          {
+            model: Status,
+            as: "status",
+            attributes: ["code", "label", "description"],
+          },
+          {
+            model: DashboardItem,
+            as: "items",
+            include: [
+              {
+                model: ItemType,
+                as: "itemType",
+                attributes: ["name", "description"],
+              },
+            ],
+            order: [["position", "ASC"]],
+          },
+          {
+            model: File,
+            as: "files",
+            attributes: ["id", "filename", "mime_type", "size"],
+          },
+        ],
+        order: [["created_at", "ASC"]],
+      });
+
+      return {
+        success: true,
+        data: dashboards.map((dashboard) => ({
+          id: dashboard.id,
+          title: dashboard.title,
+          description: dashboard.description,
+          status: dashboard.status.code,
+          owner_id: dashboard.owner_id,
+          created_at: dashboard.created_at,
+          updated_at: dashboard.updated_at,
+          items_count: dashboard.items.length,
+          files_count: dashboard.files.length,
         })),
       };
     } catch (error) {
@@ -1118,7 +1234,7 @@ class DashboardService {
   /**
    * Permet au validateur d'éditer un dashboard en statut REQUEST_UPDATE
    */
-  async editRequestedDashboard(dashboardId, validatorId, updateData) {
+  async editRequestedDashboard(dashboardId, userId, updateData) {
     const transaction = await sequelize.transaction();
 
     try {
@@ -1137,8 +1253,18 @@ class DashboardService {
         throw new Error("Dashboard non trouvé");
       }
 
+      if (dashboard.owner_id !== userId) {
+        throw new Error("Vous n'êtes pas autorisé à modifier ce dashboard");
+      }
+
       // Vérifier que le dashboard est en statut UPDATE_REQUESTED
       if (dashboard.status.code !== "UPDATE_REQUESTED") {
+        throw new Error(
+          "Ce dashboard ne peut pas être modifié dans son état actuel"
+        );
+      }
+
+      if (!dashboard.status.editable) {
         throw new Error(
           "Ce dashboard ne peut pas être modifié dans son état actuel"
         );

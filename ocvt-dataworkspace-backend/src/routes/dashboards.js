@@ -8,7 +8,7 @@ const Status = require("../models/Status");
 
 // Middleware pour extraire l'ID utilisateur depuis le token JWT
 const extractUserId = (req, res, next) => {
-  req.user = { id: "user123" }; // other_user_002
+  // req.user = { id: "user123" }; // other_user_002
   try {
     // Supposons que l'ID utilisateur est stocké dans req.user.id après l'authentification
     if (!req.user || !req.user.id) {
@@ -43,8 +43,8 @@ const handleValidationErrors = (req, res, next) => {
 // POST /dashboards - Créer un nouveau dashboard
 router.post(
   "/",
-  // authMiddleware,
-  // requireRole(["dashboard-creator"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   extractUserId,
   [
     check("title")
@@ -110,8 +110,8 @@ router.post(
 // GET /dashboards/me - Récupérer la liste des dashboards de l'utilisateur connecté
 router.get(
   "/me",
-  // authMiddleware,
-  // requireRole(["dashboard-creator"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   extractUserId,
   async (req, res) => {
     try {
@@ -136,8 +136,8 @@ router.get(
 // GET /dashboards/:id - Récupérer les détails d'un dashboard
 router.get(
   "/:id",
-  // authMiddleware,
-  // requireRole(["dashboard-creator"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   extractUserId,
   [check("id").isUUID().withMessage("ID de dashboard invalide")],
   handleValidationErrors,
@@ -177,8 +177,8 @@ router.get(
 // PUT /dashboards/:id - Mettre à jour un dashboard
 router.put(
   "/:id",
-  // authMiddleware,
-  // requireRole(["dashboard-creator"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   extractUserId,
   [
     check("id").isUUID().withMessage("ID de dashboard invalide"),
@@ -266,8 +266,8 @@ router.put(
 // POST /dashboards/:id/items - Ajouter un item au dashboard
 router.post(
   "/:id/items",
-  // authMiddleware,
-  // requireRole(["dashboard-creator"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   extractUserId,
   [
     check("id").isUUID().withMessage("ID de dashboard invalide"),
@@ -357,8 +357,8 @@ router.post(
 // PUT /dashboard_items/:itemId - Mettre à jour un item
 router.put(
   "/items/:itemId",
-  // authMiddleware,
-  // requireRole(["dashboard-creator"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   extractUserId,
   [
     check("itemId").isUUID().withMessage("ID d'item invalide"),
@@ -441,8 +441,8 @@ router.put(
 // DELETE /dashboard_items/:itemId - Supprimer un item
 router.delete(
   "/items/:itemId",
-  // authMiddleware,
-  // requireRole(["dashboard-creator"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   extractUserId,
   [check("itemId").isUUID().withMessage("ID d'item invalide")],
   handleValidationErrors,
@@ -489,8 +489,8 @@ router.delete(
 // POST /dashboards/:id/submit - Soumettre un dashboard pour validation
 router.post(
   "/:id/submit",
-  // authMiddleware,
-  // requireRole(["dashboard-creator"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   extractUserId,
   [check("id").isUUID().withMessage("ID de dashboard invalide")],
   handleValidationErrors,
@@ -537,8 +537,8 @@ router.post(
 // POST /dashboards/:id/duplicate - Dupliquer un dashboard
 router.post(
   "/:id/duplicate",
-  // authMiddleware,
-  // requireRole(["dashboard-creator"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   extractUserId,
   [check("id").isUUID().withMessage("ID de dashboard invalide")],
   handleValidationErrors,
@@ -578,8 +578,8 @@ router.post(
 // POST /files - Upload de fichiers
 router.post(
   "/files",
-  // authMiddleware,
-  // requireRole(["dashboard-creator"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL"]),
   extractUserId,
   [
     check("filename")
@@ -637,8 +637,8 @@ router.post(
 // GET /dashboards/get/item_types - Récupérer la liste des types d'items
 router.get(
   "/get/item_types",
-  // authMiddleware,
-  // requireRole(["dashboard-creator"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
   extractUserId,
   async (req, res) => {
     try {
@@ -658,8 +658,8 @@ router.get(
 // GET /dashboards/get/statuses - Récupérer la liste des statuts
 router.get(
   "/get/statuses",
-  // authMiddleware,
-  // requireRole(["dashboard-creator"]),
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
   extractUserId,
   async (req, res) => {
     try {

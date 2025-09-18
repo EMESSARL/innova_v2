@@ -1,12 +1,12 @@
 const express = require("express");
 const router = express.Router();
 const { check, validationResult } = require("express-validator");
-// const { authMiddleware, requireRole } = require("../middleware/auth");
+const { authMiddleware, requireRole } = require("../middleware/auth");
 const dashboardService = require("../services/dashboardService");
 
 // Middleware pour extraire l'ID utilisateur depuis le token JWT
 const extractUserId = (req, res, next) => {
-  req.user = { id: "user123" }; // other_user_002
+  // req.user = { id: "user123" }; // other_user_002
   try {
     if (!req.user || !req.user.id) {
       return res.status(401).json({
@@ -38,42 +38,42 @@ const handleValidationErrors = (req, res, next) => {
 };
 
 // GET /dashboards?status=VALIDATED - Lister les dashboards validés prêts à être publiés
-router.get(
-  "/dashboards",
-  // authMiddleware,
-  // requireRole(["dashboard-publisher"]),
-  extractUserId,
-  async (req, res) => {
-    try {
-      // Vérifier que le statut demandé est VALIDATED
-      if (req.query.status !== "VALIDATED") {
-        return res.status(400).json({
-          success: false,
-          error: "Seul le statut VALIDATED est autorisé pour les publishers",
-        });
-      }
+// router.get(
+//   "/dashboards",
+//   authMiddleware,
+//   requireRole(["ROLE_VALIDATOR", "ROLE_ADMIN"]),
+//   extractUserId,
+//   async (req, res) => {
+//     try {
+//       // Vérifier que le statut demandé est VALIDATED
+//       if (req.query.status !== "VALIDATED") {
+//         return res.status(400).json({
+//           success: false,
+//           error: "Seul le statut VALIDATED est autorisé pour les validateurs",
+//         });
+//       }
 
-      const result = await dashboardService.getValidatedDashboards(req.userId);
-      res.json(result);
-    } catch (error) {
-      console.error(
-        "Erreur lors de la récupération des dashboards validés:",
-        error
-      );
-      res.status(500).json({
-        success: false,
-        error: "Erreur lors de la récupération des dashboards validés",
-        message: error.message,
-      });
-    }
-  }
-);
+//       const result = await dashboardService.getValidatedDashboards(req.userId);
+//       res.json(result);
+//     } catch (error) {
+//       console.error(
+//         "Erreur lors de la récupération des dashboards validés:",
+//         error
+//       );
+//       res.status(500).json({
+//         success: false,
+//         error: "Erreur lors de la récupération des dashboards validés",
+//         message: error.message,
+//       });
+//     }
+//   }
+// );
 
 // POST /dashboards/:id/publish - Publier un dashboard validé
 router.post(
   "/dashboards/:id/publish",
-  // authMiddleware,
-  // requireRole(["dashboard-publisher"]),
+  authMiddleware,
+  requireRole(["ROLE_VALIDATOR"]),
   extractUserId,
   [
     check("id").isUUID().withMessage("ID de dashboard invalide"),
@@ -143,8 +143,8 @@ router.post(
 // DELETE /dashboards/:id/publish - Retirer un dashboard de la publication
 router.delete(
   "/dashboards/:id/publish",
-  // authMiddleware,
-  // requireRole(["dashboard-publisher"]),
+  authMiddleware,
+  requireRole(["ROLE_VALIDATOR"]),
   extractUserId,
   [check("id").isUUID().withMessage("ID de dashboard invalide")],
   handleValidationErrors,
