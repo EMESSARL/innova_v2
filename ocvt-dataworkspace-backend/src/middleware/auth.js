@@ -25,10 +25,20 @@ const requireRole = (allowedRoles) => {
     }
 
     try {
+      // Normalise en liste plate de rôles (OR) : si au moins un rôle correspond, on autorise
+      const requiredRoles = Array.isArray(allowedRoles)
+        ? allowedRoles
+        : typeof allowedRoles === "string" && allowedRoles.trim() !== ""
+        ? [allowedRoles]
+        : [];
+
+      // Valide le token et récupère le payload via l'API d'auth
       const response = await axios.post(
         AUTH_API_URL,
         {
-          requiredRoles: allowedRoles,
+          // On peut transmettre un rôle quelconque si l'API exige ce champ,
+          // mais on effectue la décision d'autorisation localement (OR) ci-dessous.
+          requiredRoles: requiredRoles.length > 0 ? [requiredRoles[0]] : [],
         },
         {
           headers: {
@@ -37,20 +47,29 @@ const requireRole = (allowedRoles) => {
         }
       );
 
-      if (response.data.isAuthorized) {
-        req.user = {
-          id: response.data.decodedToken.sub,
-          roles: response.data.decodedToken.realm_access.roles,
-          name: response.data.decodedToken.name,
-          email: response.data.decodedToken.email,
-          preferred_username: response.data.decodedToken.preferred_username,
-        };
-        next();
-      } else {
+      const decoded = response?.data?.decodedToken || {};
+      const userRoles = decoded?.realm_access?.roles || [];
+
+      // OR logique: autorise si intersection non vide
+      const isAuthorizedLocally =
+        requiredRoles.length === 0
+          ? true
+          : requiredRoles.some((role) => userRoles.includes(role));
+
+      if (!isAuthorizedLocally) {
         return res
           .status(403)
           .json({ error: "Accès refusé : rôle insuffisant" });
       }
+
+      req.user = {
+        id: decoded.sub,
+        roles: userRoles,
+        name: decoded.name,
+        email: decoded.email,
+        preferred_username: decoded.preferred_username,
+      };
+      next();
     } catch (error) {
       if (error.response) {
         if (error.response.data.message === "jwt expired") {

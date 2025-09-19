@@ -145,7 +145,8 @@ router.get(
     try {
       const result = await dashboardService.getDashboardById(
         req.params.id,
-        req.userId
+        req.userId,
+        req.user.roles
       );
       res.json(result);
     } catch (error) {
