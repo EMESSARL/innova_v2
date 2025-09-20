@@ -315,6 +315,45 @@ router.get(
   }
 );
 
+router.get(
+  "/data-sources/:source_id/view",
+  [
+    param("source_id").isInt().withMessage("ID de la source invalide"),
+  ],
+  authMiddleware,
+  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { source_id } = req.params;
+    const userId = req.user.id;
+
+    try {
+      const result = await dataworkspaceService.getFileForView(
+        source_id,
+        userId
+      );
+      res.status(200).json(result);
+    } catch (error) {
+      if (
+        error.message === "Source de données non trouvée" ||
+        error.message === "Accès non autorisé à cette source"
+      ) {
+        return res.status(404).json({ error: error.message });
+      }
+      if (
+        error.message === "Fichier non trouvé dans le système de fichiers"
+      ) {
+        return res.status(400).json({ error: error.message });
+      }
+      res.status(500).json({ error: "Erreur serveur : " + error.message });
+    }
+  }
+);
+
 // GET /supported-database-types
 router.get(
   "/supported-database-types",

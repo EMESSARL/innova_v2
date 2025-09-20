@@ -5,12 +5,12 @@ const {
   ItemType,
   Status,
   File,
-  DashboardFile,
   Validation,
   Publication,
   Domain,
   SubDomain,
   sequelize,
+  FinalResults,
 } = require("../models");
 
 class DashboardService {
@@ -365,12 +365,12 @@ class DashboardService {
         }
 
         // Vérifier que le fichier existe et appartient à l'utilisateur
-        const file = await File.findByPk(config.file_id);
+        const file = await FinalResults.findByPk(config.file_id);
         if (!file) {
           throw new Error("Le fichier spécifié n'existe pas");
         }
 
-        if (file.uploaded_by !== userId) {
+        if (file.user_id !== userId) {
           throw new Error("Vous n'êtes pas autorisé à utiliser ce fichier");
         }
         break;

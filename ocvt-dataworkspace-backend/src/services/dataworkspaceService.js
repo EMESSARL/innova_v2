@@ -2,7 +2,6 @@ const {
   FinalResults,
   NonFinalSources,
   ProcessingStates,
-  Submissions,
   SourceTypes,
   SupportedFileExtensions,
   SupportedDatabaseTypes,
@@ -519,6 +518,8 @@ const loadDataFromSource = async (userId, sourceId, limit = 10, offset = 0) => {
           parsedData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
           break;
         case "json":
+          parsedData = JSON.parse(fileData.toString("utf-8"));
+          break;
         case "geojson":
           parsedData = JSON.parse(fileData.toString("utf-8"));
           break;
@@ -603,6 +604,8 @@ const loadDataFromSource = async (userId, sourceId, limit = 10, offset = 0) => {
       parsedData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
       break;
     case "json":
+      parsedData = JSON.parse(fileData.toString("utf-8"));
+      break;
     case "geojson":
       parsedData = JSON.parse(fileData.toString("utf-8"));
       break;
@@ -629,6 +632,41 @@ const loadDataFromSource = async (userId, sourceId, limit = 10, offset = 0) => {
       pagination: { limit, offset, total },
     },
   };
+};
+
+const getFileForView = async (source_id, userId) => {
+  const finalSource = await FinalResults.findByPk(source_id);
+  if (!finalSource) {
+    throw new Error("Source de données non trouvée");
+  }
+
+  // Vérifier l'autorisation d'accès
+  if (finalSource.user_id !== userId) {
+    throw new Error("Accès non autorisé à cette source");
+  }
+
+  if (
+    finalSource.result_type === "file" &&
+    finalSource.metadata?.file_path
+  ) {
+    try {
+      // Générer une URL pour le fichier (valide pendant 1 heure)
+      const presignedUrl = await minioClient.presignedUrl(
+        "GET",
+        BUCKET_NAME,
+        finalSource.metadata.file_path,
+        3600
+      );
+      return {
+        success: true,
+        url: presignedUrl,
+      };
+    } catch (error) {
+      throw new Error("Fichier non trouvé dans le système de fichiers");
+    }
+  } else {
+    throw new Error("Cette source ne contient pas de fichier");
+  }
 };
 
 // Teste la connexion à une base de données selon le dialecte
@@ -1742,4 +1780,5 @@ module.exports = {
   getProcessingStateHistory,
   getStateContentsAsJson,
   getFullProcessingHistory,
+  getFileForView,
 };
