@@ -68,10 +68,16 @@ router.get(
             req.userId
           );
           res.json(result);
+        } else if (req.query.status === "PUBLISHED") {
+          const result = await dashboardService.getPublishedDashboards(
+            req.userId
+          );
+          res.json(result);
         } else {
           return res.status(400).json({
             success: false,
-            error: "Seul le statut SUBMITTED, REJECTED ou VALIDATED est autorisé",
+            error:
+              "Seul le statut SUBMITTED, REJECTED, VALIDATED ou PUBLISHED est autorisé",
           });
         }
       } else {
@@ -79,10 +85,7 @@ router.get(
         res.json(result);
       }
     } catch (error) {
-      console.error(
-        "Erreur lors de la récupération des dashboards:",
-        error
-      );
+      console.error("Erreur lors de la récupération des dashboards:", error);
       res.status(500).json({
         success: false,
         error: "Erreur lors de la récupération des dashboards",

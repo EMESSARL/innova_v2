@@ -1032,6 +1032,67 @@ class DashboardService {
   }
 
   /**
+   * Récupère les dashboards rejetés
+   */
+  async getPublishedDashboards(validatorId) {
+    try {
+      const rejectedStatus = await Status.findOne({
+        where: { code: "PUBLISHED" },
+      });
+
+      if (!rejectedStatus) {
+        throw new Error("Statut PUBLISHED non trouvé");
+      }
+
+      const dashboards = await Dashboard.findAll({
+        where: { status_id: rejectedStatus.id },
+        include: [
+          {
+            model: Status,
+            as: "status",
+            attributes: ["code", "label", "description"],
+          },
+          {
+            model: DashboardItem,
+            as: "items",
+            include: [
+              {
+                model: ItemType,
+                as: "itemType",
+                attributes: ["name", "description"],
+              },
+            ],
+            order: [["position", "ASC"]],
+          },
+          {
+            model: File,
+            as: "files",
+            attributes: ["id", "filename", "mime_type", "size"],
+          },
+        ],
+        order: [["created_at", "ASC"]],
+      });
+
+      return {
+        success: true,
+        data: dashboards.map((dashboard) => ({
+          id: dashboard.id,
+          title: dashboard.title,
+          description: dashboard.description,
+          status: dashboard.status.code,
+          owner_id: dashboard.owner_id,
+          created_at: dashboard.created_at,
+          updated_at: dashboard.updated_at,
+          items_count: dashboard.items.length,
+          files_count: dashboard.files.length,
+        })),
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
    * Récupère tous les dashboards
    */
   async getAllDashboards(validatorId) {
@@ -1388,83 +1449,83 @@ class DashboardService {
   /**
    * Récupère tous les dashboards (accès administrateur)
    */
-  async getAllDashboards(adminId, filters = {}) {
-    try {
-      const whereClause = {};
+  // async getAllDashboards(adminId, filters = {}) {
+  //   try {
+  //     const whereClause = {};
 
-      // Filtres optionnels
-      if (filters.status) {
-        const status = await Status.findOne({
-          where: { code: filters.status },
-        });
-        if (status) {
-          whereClause.status_id = status.id;
-        }
-      }
+  //     // Filtres optionnels
+  //     if (filters.status) {
+  //       const status = await Status.findOne({
+  //         where: { code: filters.status },
+  //       });
+  //       if (status) {
+  //         whereClause.status_id = status.id;
+  //       }
+  //     }
 
-      if (filters.owner_id) {
-        whereClause.owner_id = filters.owner_id;
-      }
+  //     if (filters.owner_id) {
+  //       whereClause.owner_id = filters.owner_id;
+  //     }
 
-      const dashboards = await Dashboard.findAll({
-        where: whereClause,
-        include: [
-          {
-            model: Status,
-            as: "status",
-            attributes: ["code", "label", "description"],
-          },
-          {
-            model: DashboardItem,
-            as: "items",
-            include: [
-              {
-                model: ItemType,
-                as: "itemType",
-                attributes: ["name", "description"],
-              },
-            ],
-            order: [["position", "ASC"]],
-          },
-          {
-            model: File,
-            as: "files",
-            attributes: ["id", "filename", "mime_type", "size"],
-          },
-          {
-            model: Publication,
-            as: "publication",
-            attributes: ["visibility", "group_id", "published_at"],
-          },
-        ],
-        order: [["created_at", "DESC"]],
-      });
+  //     const dashboards = await Dashboard.findAll({
+  //       where: whereClause,
+  //       include: [
+  //         {
+  //           model: Status,
+  //           as: "status",
+  //           attributes: ["code", "label", "description"],
+  //         },
+  //         {
+  //           model: DashboardItem,
+  //           as: "items",
+  //           include: [
+  //             {
+  //               model: ItemType,
+  //               as: "itemType",
+  //               attributes: ["name", "description"],
+  //             },
+  //           ],
+  //           order: [["position", "ASC"]],
+  //         },
+  //         {
+  //           model: File,
+  //           as: "files",
+  //           attributes: ["id", "filename", "mime_type", "size"],
+  //         },
+  //         {
+  //           model: Publication,
+  //           as: "publication",
+  //           attributes: ["visibility", "group_id", "published_at"],
+  //         },
+  //       ],
+  //       order: [["created_at", "DESC"]],
+  //     });
 
-      return {
-        success: true,
-        data: dashboards.map((dashboard) => ({
-          id: dashboard.id,
-          title: dashboard.title,
-          description: dashboard.description,
-          status: dashboard.status.code,
-          owner_id: dashboard.owner_id,
-          created_at: dashboard.created_at,
-          updated_at: dashboard.updated_at,
-          items_count: dashboard.items.length,
-          files_count: dashboard.files.length,
-          publication: dashboard.publication
-            ? {
-                visibility: dashboard.publication.visibility,
-                group_id: dashboard.publication.group_id,
-                published_at: dashboard.publication.published_at,
-              }
-            : null,
-        })),
-      };
-    } catch (error) {
-      throw error;
-    }
-  }
+  //     return {
+  //       success: true,
+  //       data: dashboards.map((dashboard) => ({
+  //         id: dashboard.id,
+  //         title: dashboard.title,
+  //         description: dashboard.description,
+  //         status: dashboard.status.code,
+  //         owner_id: dashboard.owner_id,
+  //         created_at: dashboard.created_at,
+  //         updated_at: dashboard.updated_at,
+  //         items_count: dashboard.items.length,
+  //         files_count: dashboard.files.length,
+  //         publication: dashboard.publication
+  //           ? {
+  //               visibility: dashboard.publication.visibility,
+  //               group_id: dashboard.publication.group_id,
+  //               published_at: dashboard.publication.published_at,
+  //             }
+  //           : null,
+  //       })),
+  //     };
+  //   } catch (error) {
+  //     throw error;
+  //   }
+  // }
 
   /**
    * Récupère les statistiques globales du système
