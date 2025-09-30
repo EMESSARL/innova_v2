@@ -46,7 +46,7 @@ const handleValidationErrors = (req, res, next) => {
 router.post(
   "/",
   authMiddleware,
-  requireRole(["ROLE_ADMIN"]),
+  requireRole(["DELETE_DASHBOARD"]),
   extractUserId,
   [
     check("name")
@@ -84,7 +84,7 @@ router.post(
 router.get(
   "/",
   authMiddleware,
-  requireRole(["ROLE_ADMIN","ROLE_POINT_FOCAL"]),
+  requireRole(["LIST_DASHBOARD"]),
   extractUserId,
   async (req, res) => {
     try {
@@ -105,7 +105,7 @@ router.get(
 router.get(
   "/:id",
   authMiddleware,
-  requireRole(["ROLE_ADMIN","ROLE_POINT_FOCAL"]),
+  requireRole(["LIST_DASHBOARD"]),
   extractUserId,
   [check("id").isInt({ min: 1 }).withMessage("ID de domaine invalide")],
   handleValidationErrors,
@@ -136,7 +136,7 @@ router.get(
 router.put(
   "/:id",
   authMiddleware,
-  requireRole(["ROLE_ADMIN"]),
+  requireRole(["DELETE_DASHBOARD"]),
   extractUserId,
   [
     check("id").isInt({ min: 1 }).withMessage("ID de domaine invalide"),
@@ -181,7 +181,7 @@ router.put(
 router.delete(
   "/:id",
   authMiddleware,
-  requireRole(["ROLE_ADMIN"]),
+  requireRole(["DELETE_DASHBOARD"]),
   extractUserId,
   [check("id").isInt({ min: 1 }).withMessage("ID de domaine invalide")],
   handleValidationErrors,
@@ -216,7 +216,7 @@ router.delete(
 router.post(
   "/subdomains",
   authMiddleware,
-  requireRole(["ROLE_ADMIN"]),
+  requireRole(["DELETE_DASHBOARD"]),
   extractUserId,
   [
     check("name")
@@ -266,7 +266,7 @@ router.post(
 router.get(
   "/subdomains/get",
   authMiddleware,
-  requireRole(["ROLE_ADMIN","ROLE_POINT_FOCAL"]),
+  requireRole(["LIST_DASHBOARD"]),
   extractUserId,
   async (req, res) => {
     try {
@@ -287,7 +287,7 @@ router.get(
 router.get(
   "/subdomains/:id",
   authMiddleware,
-  requireRole(["ROLE_ADMIN","ROLE_POINT_FOCAL"]),
+  requireRole(["LIST_DASHBOARD"]),
   extractUserId,
   [check("id").isInt({ min: 1 }).withMessage("ID de sous-domaine invalide")],
   handleValidationErrors,
@@ -318,7 +318,7 @@ router.get(
 router.get(
   "/:domainId/subdomains",
   authMiddleware,
-  requireRole(["ROLE_ADMIN","ROLE_POINT_FOCAL"]),
+  requireRole(["LIST_DASHBOARD"]),
   extractUserId,
   [check("domainId").isInt({ min: 1 }).withMessage("ID de domaine invalide")],
   handleValidationErrors,
@@ -351,7 +351,7 @@ router.get(
 router.put(
   "/subdomains/:id",
   authMiddleware,
-  requireRole(["ROLE_ADMIN"]),
+  requireRole(["DELETE_DASHBOARD"]),
   extractUserId,
   [
     check("id").isInt({ min: 1 }).withMessage("ID de sous-domaine invalide"),
@@ -412,7 +412,7 @@ router.put(
 router.delete(
   "/subdomains/:id",
   authMiddleware,
-  requireRole(["ROLE_ADMIN"]),
+  requireRole(["DELETE_DASHBOARD"]),
   extractUserId,
   [check("id").isInt({ min: 1 }).withMessage("ID de sous-domaine invalide")],
   handleValidationErrors,

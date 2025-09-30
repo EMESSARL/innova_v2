@@ -17,7 +17,7 @@ const authMiddleware = (req, res, next) => {
 };
 
 // Middleware pour vérifier les rôles via l'API d'authentification
-const requireRole = (allowedRoles) => {
+const requireRole = (allowedPrivileges) => {
   return async (req, res, next) => {
     const token = req.headers.authorization?.split(" ")[1];
     if (!token) {
@@ -26,10 +26,11 @@ const requireRole = (allowedRoles) => {
 
     try {
       // Normalise en liste plate de rôles (OR) : si au moins un rôle correspond, on autorise
-      const requiredRoles = Array.isArray(allowedRoles)
-        ? allowedRoles
-        : typeof allowedRoles === "string" && allowedRoles.trim() !== ""
-        ? [allowedRoles]
+      const requiredPrivileges = Array.isArray(allowedPrivileges)
+        ? allowedPrivileges
+        : typeof allowedPrivileges === "string" &&
+          allowedPrivileges.trim() !== ""
+        ? [allowedPrivileges]
         : [];
 
       // Valide le token et récupère le payload via l'API d'auth
@@ -38,7 +39,8 @@ const requireRole = (allowedRoles) => {
         {
           // On peut transmettre un rôle quelconque si l'API exige ce champ,
           // mais on effectue la décision d'autorisation localement (OR) ci-dessous.
-          requiredRoles: requiredRoles.length > 0 ? [requiredRoles[0]] : [],
+          requiredPrivileges:
+            requiredPrivileges.length > 0 ? [requiredPrivileges[0]] : [],
         },
         {
           headers: {
@@ -48,13 +50,17 @@ const requireRole = (allowedRoles) => {
       );
 
       const decoded = response?.data?.decodedToken || {};
-      const userRoles = decoded?.realm_access?.roles || [];
+      const userRoles =
+        decoded?.resource_access["ocvt-dataset"].roles.concat(
+          decoded?.resource_access["ocvt-dashboard"].roles
+        ) || [];
+      console.log(userRoles);
 
       // OR logique: autorise si intersection non vide
       const isAuthorizedLocally =
-        requiredRoles.length === 0
+        requiredPrivileges.length === 0
           ? true
-          : requiredRoles.some((role) => userRoles.includes(role));
+          : requiredPrivileges.some((role) => userRoles.includes(role));
 
       if (!isAuthorizedLocally) {
         return res

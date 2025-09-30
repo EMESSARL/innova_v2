@@ -7,7 +7,7 @@ const calculateService = require("../services/calculateService");
 router.post(
   "/",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL"]),
+  requireRole(["PROCESS_DATA"]),
   [
     check("state_id").isInt().withMessage("ID du dataset invalide"),
     check("new_column_name")

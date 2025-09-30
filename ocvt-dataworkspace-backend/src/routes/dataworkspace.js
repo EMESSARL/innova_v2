@@ -23,7 +23,7 @@ const upload = multer({
 router.get(
   "/data-sources",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  requireRole(["LIST_DATA"]),
   async (req, res) => {
     const userId = req.user.id;
 
@@ -46,7 +46,7 @@ router.get(
 router.get(
   "/data-source-types",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  requireRole(["LIST_DATA"]),
   async (req, res) => {
     try {
       const result = await dataworkspaceService.listDataSourceTypes();
@@ -99,7 +99,7 @@ router.patch(
 router.post(
   "/data-sources",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL"]),
+  requireRole(["CREATE_DATA"]),
   upload.single("file"),
   [
     check("type")
@@ -235,7 +235,7 @@ router.post(
 router.delete(
   "/data-sources/:source_id",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  requireRole(["DELETE_DATA"]),
   [
     param("source_id").isInt().withMessage("ID de la source invalide"),
     query("is_final")
@@ -270,7 +270,7 @@ router.delete(
 router.get(
   "/data-sources/:source_id/data",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  requireRole(["LIST_DATA", "LOAD_DATA"]),
   [
     param("source_id").isInt().withMessage("ID de la source invalide"),
     query("limit")
@@ -321,7 +321,7 @@ router.get(
     param("source_id").isInt().withMessage("ID de la source invalide"),
   ],
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  requireRole(["LIST_DATA", "LOAD_DATA"]),
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -358,7 +358,7 @@ router.get(
 router.get(
   "/supported-database-types",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  requireRole(["CREATE_DATA"]),
   async (req, res) => {
     try {
       const result = await dataworkspaceService.listSupportedDatabaseTypes();
@@ -373,7 +373,7 @@ router.get(
 router.get(
   "/supported-file-extensions",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  requireRole(["CREATE_DATA"]),
   async (req, res) => {
     try {
       const result = await dataworkspaceService.listSupportedFileExtensions();
@@ -388,7 +388,7 @@ router.get(
 router.get(
   "/supported-charts",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  requireRole(["CREATE_DATA"]),
   async (req, res) => {
     try {
       const result = await dataworkspaceService.listSupportedCharts();
@@ -403,7 +403,7 @@ router.get(
 router.get(
   "/data-sources/:source_id/tables",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  requireRole(["LOAD_DATA", "CREATE_DATA"]),
   [param("source_id").isInt().withMessage("ID de la source invalide")],
   async (req, res) => {
     const errors = validationResult(req);
@@ -436,7 +436,7 @@ router.get(
 router.get(
   "/data-sources/:source_id/tables/:table_name/columns",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  requireRole(["LOAD_DATA", "CREATE_DATA"]),
   [
     param("source_id").isInt().withMessage("ID de la source invalide"),
     param("table_name").notEmpty().withMessage("Le nom de la table est requis"),
@@ -472,7 +472,7 @@ router.get(
 router.get(
   "/data-sources/:source_id/tables/with-columns-and-count",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  requireRole(["LOAD_DATA", "CREATE_DATA"]),
   [param("source_id").isInt().withMessage("ID de la source invalide")],
   async (req, res) => {
     const errors = validationResult(req);
@@ -495,7 +495,7 @@ router.get(
 router.post(
   "/processing-states/initial",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL"]),
+  requireRole(["PROCESS_DATA"]),
   [
     check("sourceId").isInt().withMessage("ID de la source requis"),
     check("columns").isArray({ min: 1 }).withMessage("Colonnes requises"),
@@ -528,7 +528,7 @@ router.post(
 router.get(
   "/processing-states/initial/:sourceId",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL"]),
+  requireRole(["PROCESS_DATA"]),
   [
     param("sourceId").isInt().withMessage("ID de la source requis"),
     query("limit").optional().isInt({ min: 1 }),
@@ -563,7 +563,7 @@ router.get(
 router.post(
   "/processing-states/preview",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  requireRole(["PROCESS_DATA"]),
   [
     check("sourceId").isInt().withMessage("ID de la source requis"),
     check("columns").isArray({ min: 1 }).withMessage("Colonnes requises"),
@@ -599,7 +599,7 @@ router.post(
 router.get(
   "/processing-states/:stateId/history",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  requireRole(["PROCESS_DATA"]),
   [param("stateId").isInt().withMessage("ID de l'état requis")],
   async (req, res) => {
     const errors = validationResult(req);
@@ -623,7 +623,7 @@ router.get(
 router.get(
   "/processing-states/contents/:stateId",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  requireRole(["PROCESS_DATA"]),
   [
     param("stateId").isInt().withMessage("ID de l'état requis"),
     // query("limit").optional().isInt({ min: 1 }),
@@ -657,7 +657,7 @@ router.get(
 router.get(
   "/processing-history/:nonFinalSourceId",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  requireRole(["PROCESS_DATA"]),
   [param("nonFinalSourceId").isInt().withMessage("ID de la source requis")],
   async (req, res) => {
     const errors = validationResult(req);

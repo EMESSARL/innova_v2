@@ -7,7 +7,7 @@ const anomaliesService = require("../services/anomaliesService");
 router.post(
   "/",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL"]),
+  requireRole(["PROCESS_DATA"]),
   [
     check("state_id").isInt().withMessage("ID du dataset invalide"),
     check("algorithm")

@@ -45,7 +45,7 @@ const handleValidationErrors = (req, res, next) => {
 router.get(
   "/dashboards",
   authMiddleware,
-  requireRole(["ROLE_ADMIN"]),
+  requireRole(["LIST_DASHBOARD"]),
   extractUserId,
   async (req, res) => {
     try {
@@ -69,7 +69,7 @@ router.get(
 router.get(
   "/dashboards/:id",
   authMiddleware,
-  requireRole(["ROLE_ADMIN"]),
+  requireRole(["LIST_DASHBOARD"]),
   extractUserId,
   [check("id").isUUID().withMessage("ID de dashboard invalide")],
   handleValidationErrors,
@@ -174,7 +174,7 @@ router.post(
 router.delete(
   "/dashboards/:id/permanent",
   authMiddleware,
-  requireRole(["ROLE_ADMIN"]),
+  requireRole(["DELETE_DASHBOARD"]),
   extractUserId,
   [
     check("id").isUUID().withMessage("ID de dashboard invalide"),
@@ -216,7 +216,7 @@ router.delete(
 router.post(
   "/item_types",
   authMiddleware,
-  requireRole(["ROLE_ADMIN"]),
+  requireRole(["ADD_ITEM_DASHBOARD"]),
   extractUserId,
   [
     check("name")
@@ -260,7 +260,7 @@ router.post(
 router.get(
   "/item_types",
   authMiddleware,
-  requireRole(["dashboard-admin"]),
+  requireRole(["LIST_DASHBOARD"]),
   extractUserId,
   async (req, res) => {
     try {
@@ -281,7 +281,7 @@ router.get(
 router.get(
   "/item_types/:id",
   authMiddleware,
-  requireRole(["ROLE_ADMIN"]),
+  requireRole(["LIST_DASHBOARD"]),
   extractUserId,
   [check("id").isUUID().withMessage("ID de type d'item invalide")],
   handleValidationErrors,
@@ -315,7 +315,7 @@ router.get(
 router.put(
   "/item_types/:id",
   authMiddleware,
-  requireRole(["ROLE_ADMIN"]),
+  requireRole(["ADD_ITEM_DASHBOARD"]),
   extractUserId,
   [
     check("id").isUUID().withMessage("ID de type d'item invalide"),
@@ -372,7 +372,7 @@ router.put(
 router.delete(
   "/item_types/:id",
   authMiddleware,
-  requireRole(["ROLE_ADMIN"]),
+  requireRole(["DELETE_DASHBOARD"]),
   extractUserId,
   [check("id").isUUID().withMessage("ID de type d'item invalide")],
   handleValidationErrors,
@@ -417,7 +417,7 @@ router.delete(
 router.post(
   "/statuses",
   authMiddleware,
-  requireRole(["ROLE_ADMIN"]),
+  requireRole(["DELETE_DASHBOARD"]),
   extractUserId,
   [
     check("code")
@@ -469,7 +469,7 @@ router.post(
 router.get(
   "/statuses",
   authMiddleware,
-  requireRole(["dashboard-admin"]),
+  requireRole(["LIST_DASHBOARD"]),
   extractUserId,
   async (req, res) => {
     try {
@@ -490,7 +490,7 @@ router.get(
 router.get(
   "/statuses/:id",
   authMiddleware,
-  requireRole(["ROLE_ADMIN"]),
+  requireRole(["LIST_DASHBOARD"]),
   extractUserId,
   [check("id").isUUID().withMessage("ID de statut invalide")],
   handleValidationErrors,
@@ -524,7 +524,7 @@ router.get(
 router.put(
   "/statuses/:id",
   authMiddleware,
-  requireRole(["ROLE_ADMIN"]),
+  requireRole(["DELETE_DASHBOARD"]),
   extractUserId,
   [
     check("id").isUUID().withMessage("ID de statut invalide"),
@@ -590,7 +590,7 @@ router.put(
 router.delete(
   "/statuses/:id",
   authMiddleware,
-  requireRole(["ROLE_ADMIN"]),
+  requireRole(["DELETE_DASHBOARD"]),
   extractUserId,
   [check("id").isUUID().withMessage("ID de statut invalide")],
   handleValidationErrors,
@@ -628,7 +628,7 @@ router.delete(
 router.put(
   "/statuses/:id/transitions",
   authMiddleware,
-  requireRole(["ROLE_ADMIN"]),
+  requireRole(["DELETE_DASHBOARD"]),
   extractUserId,
   [
     check("id").isUUID().withMessage("ID de statut invalide"),

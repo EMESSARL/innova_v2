@@ -7,7 +7,7 @@ const predictService = require("../services/predictService");
 router.post(
   "/",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL"]),
+  requireRole(["PROCESS_DATA"]),
   [
     check("state_id").isInt().withMessage("ID du dataset invalide"),
     check("target_column")

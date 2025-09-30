@@ -73,7 +73,7 @@ const handleValidationErrors = (req, res, next) => {
 router.post(
   "/dashboards/:id/publish",
   authMiddleware,
-  requireRole(["ROLE_VALIDATOR"]),
+  requireRole(["PUBLISH_DASHBOARD"]),
   extractUserId,
   [
     check("id").isUUID().withMessage("ID de dashboard invalide"),
@@ -144,7 +144,7 @@ router.post(
 router.delete(
   "/dashboards/:id/publish",
   authMiddleware,
-  requireRole(["ROLE_VALIDATOR"]),
+  requireRole(["UNPUBLISH_DASHBOARD"]),
   extractUserId,
   [check("id").isUUID().withMessage("ID de dashboard invalide")],
   handleValidationErrors,

@@ -44,7 +44,7 @@ const handleValidationErrors = (req, res, next) => {
 router.post(
   "/",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL"]),
+  requireRole(["CREATE_DASHBOARD"]),
   extractUserId,
   [
     check("title")
@@ -111,7 +111,7 @@ router.post(
 router.get(
   "/me",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL"]),
+  requireRole(["CREATE_DASHBOARD", "LIST_DASHBOARD"]),
   extractUserId,
   async (req, res) => {
     try {
@@ -137,7 +137,7 @@ router.get(
 router.get(
   "/:id",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL"]),
+  requireRole(["LIST_DASHBOARD"]),
   extractUserId,
   [check("id").isUUID().withMessage("ID de dashboard invalide")],
   handleValidationErrors,
@@ -179,7 +179,7 @@ router.get(
 router.put(
   "/:id",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL"]),
+  requireRole(["UPDATE_DASHBOARD"]),
   extractUserId,
   [
     check("id").isUUID().withMessage("ID de dashboard invalide"),
@@ -268,7 +268,7 @@ router.put(
 router.post(
   "/:id/items",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL"]),
+  requireRole(["CREATE_DASHBOARD"]),
   extractUserId,
   [
     check("id").isUUID().withMessage("ID de dashboard invalide"),
@@ -359,7 +359,7 @@ router.post(
 router.put(
   "/items/:itemId",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL"]),
+  requireRole(["UPDATE_DASHBOARD"]),
   extractUserId,
   [
     check("itemId").isUUID().withMessage("ID d'item invalide"),
@@ -443,7 +443,7 @@ router.put(
 router.delete(
   "/items/:itemId",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL"]),
+  requireRole(["CREATE_DASHBOARD"]),
   extractUserId,
   [check("itemId").isUUID().withMessage("ID d'item invalide")],
   handleValidationErrors,
@@ -491,7 +491,7 @@ router.delete(
 router.post(
   "/:id/submit",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL"]),
+  requireRole(["CREATE_DASHBOARD"]),
   extractUserId,
   [check("id").isUUID().withMessage("ID de dashboard invalide")],
   handleValidationErrors,
@@ -539,7 +539,7 @@ router.post(
 router.post(
   "/:id/duplicate",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL"]),
+  requireRole(["CREATE_DASHBOARD"]),
   extractUserId,
   [check("id").isUUID().withMessage("ID de dashboard invalide")],
   handleValidationErrors,
@@ -639,7 +639,7 @@ router.post(
 router.get(
   "/get/item_types",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  requireRole(["CREATE_DASHBOARD"]),
   extractUserId,
   async (req, res) => {
     try {
@@ -660,7 +660,7 @@ router.get(
 router.get(
   "/get/statuses",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL", "ROLE_ADMIN"]),
+  requireRole(["CREATE_DASHBOARD"]),
   extractUserId,
   async (req, res) => {
     try {

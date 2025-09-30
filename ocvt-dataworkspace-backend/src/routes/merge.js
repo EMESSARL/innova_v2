@@ -7,7 +7,7 @@ const mergeService = require("../services/mergeService");
 router.post(
   "/",
   authMiddleware,
-  requireRole(["ROLE_POINT_FOCAL"]),
+  requireRole(["PROCESS_DATA"]),
   [
     check("state_ids")
       .isArray()
