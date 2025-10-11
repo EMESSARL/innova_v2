@@ -30,20 +30,25 @@ class DashboardService {
         throw new Error("Statut DRAFT non trouvé dans la base de données");
       }
 
-      // Vérifier que le domaine existe
-      const domain = await Domain.findByPk(dashboardData.domain_id);
-      if (!domain) {
-        throw new Error("Domaine non trouvé");
+      let domain = null;
+      let subDomain = null;
+
+      // Vérifier que le domaine existe si fourni
+      if (dashboardData.domain_id) {
+        domain = await Domain.findByPk(dashboardData.domain_id);
+        if (!domain) {
+          throw new Error("Domaine non trouvé");
+        }
       }
 
       // Vérifier que le sous-domaine existe si fourni
       if (dashboardData.subdomain_id) {
-        const subDomain = await SubDomain.findByPk(dashboardData.subdomain_id);
+        subDomain = await SubDomain.findByPk(dashboardData.subdomain_id);
         if (!subDomain) {
           throw new Error("Sous-domaine non trouvé");
         }
-        // Vérifier que le sous-domaine appartient au domaine
-        if (subDomain.domain_id !== dashboardData.domain_id) {
+        // Si un domaine est fourni, vérifier que le sous-domaine appartient au domaine
+        if (domain && subDomain.domain_id !== dashboardData.domain_id) {
           throw new Error(
             "Le sous-domaine n'appartient pas au domaine spécifié"
           );
@@ -57,7 +62,7 @@ class DashboardService {
           description: dashboardData.description || null,
           status_id: draftStatus.id,
           owner_id: userId,
-          domain_id: dashboardData.domain_id,
+          domain_id: dashboardData.domain_id || null,
           subdomain_id: dashboardData.subdomain_id || null,
         },
         { transaction }
@@ -199,8 +204,7 @@ class DashboardService {
       // Vérifier les permissions (propriétaire ou public)
       if (
         dashboard.owner_id !== userId &&
-        !userRoles.includes("ROLE_ADMIN") &&
-        !userRoles.includes("ROLE_VALIDATOR")
+        !userRoles.includes("LIST_DASHBOARD")
       ) {
         // Vérifier si le dashboard est publié et public
         const publication = await dashboard.getPublication();
@@ -947,6 +951,14 @@ class DashboardService {
             as: "files",
             attributes: ["id", "filename", "mime_type", "size"],
           },
+          {
+            model: Validation,
+            as: "validations",
+            attributes: ["action", "comments", "validator_id", "created_at"],
+            where: { action: "VALIDATE" },
+            required: false,
+            order: [["created_at", "DESC"]],
+          },
         ],
         order: [["created_at", "ASC"]],
       });
@@ -963,6 +975,14 @@ class DashboardService {
           updated_at: dashboard.updated_at,
           items_count: dashboard.items.length,
           files_count: dashboard.files.length,
+          validation:
+            dashboard.validations.length > 0
+              ? {
+                  comments: dashboard.validations[0].comments,
+                  validator_id: dashboard.validations[0].validator_id,
+                  validated_at: dashboard.validations[0].created_at,
+                }
+              : null,
         })),
       };
     } catch (error) {
@@ -981,6 +1001,83 @@ class DashboardService {
 
       if (!rejectedStatus) {
         throw new Error("Statut REJECTED non trouvé");
+      }
+
+      const dashboards = await Dashboard.findAll({
+        where: { status_id: rejectedStatus.id },
+        include: [
+          {
+            model: Status,
+            as: "status",
+            attributes: ["code", "label", "description"],
+          },
+          {
+            model: DashboardItem,
+            as: "items",
+            include: [
+              {
+                model: ItemType,
+                as: "itemType",
+                attributes: ["name", "description"],
+              },
+            ],
+            order: [["position", "ASC"]],
+          },
+          {
+            model: File,
+            as: "files",
+            attributes: ["id", "filename", "mime_type", "size"],
+          },
+          {
+            model: Validation,
+            as: "validations",
+            attributes: ["action", "comments", "validator_id", "created_at"],
+            where: { action: "REJECT" },
+            required: false,
+            order: [["created_at", "DESC"]],
+          },
+        ],
+        order: [["created_at", "ASC"]],
+      });
+
+      return {
+        success: true,
+        data: dashboards.map((dashboard) => ({
+          id: dashboard.id,
+          title: dashboard.title,
+          description: dashboard.description,
+          status: dashboard.status.code,
+          owner_id: dashboard.owner_id,
+          created_at: dashboard.created_at,
+          updated_at: dashboard.updated_at,
+          items_count: dashboard.items.length,
+          files_count: dashboard.files.length,
+          validation:
+            dashboard.validations.length > 0
+              ? {
+                  comments: dashboard.validations[0].comments,
+                  validator_id: dashboard.validations[0].validator_id,
+                  rejected_at: dashboard.validations[0].created_at,
+                }
+              : null,
+        })),
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Récupère les dashboards publiés
+   */
+  async getPublishedDashboards(validatorId) {
+    try {
+      const rejectedStatus = await Status.findOne({
+        where: { code: "PUBLISHED" },
+      });
+
+      if (!rejectedStatus) {
+        throw new Error("Statut PUBLISHED non trouvé");
       }
 
       const dashboards = await Dashboard.findAll({
@@ -1032,16 +1129,16 @@ class DashboardService {
   }
 
   /**
-   * Récupère les dashboards rejetés
+   * Récupère les dashboards dépubliés
    */
-  async getPublishedDashboards(validatorId) {
+  async getUnpublishedDashboards(validatorId) {
     try {
       const rejectedStatus = await Status.findOne({
-        where: { code: "PUBLISHED" },
+        where: { code: "UNPUBLISHED" },
       });
 
       if (!rejectedStatus) {
-        throw new Error("Statut PUBLISHED non trouvé");
+        throw new Error("Statut UNPUBLISHED non trouvé");
       }
 
       const dashboards = await Dashboard.findAll({
@@ -1167,7 +1264,10 @@ class DashboardService {
       }
 
       // Vérifier que le dashboard est en statut VALIDATED
-      if (dashboard.status.code !== "VALIDATED") {
+      if (
+        dashboard.status.code !== "VALIDATED" &&
+        dashboard.status.code !== "UNPUBLISHED"
+      ) {
         throw new Error(
           "Ce dashboard ne peut pas être publié dans son état actuel"
         );

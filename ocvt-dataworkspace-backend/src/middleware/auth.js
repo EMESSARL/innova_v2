@@ -54,7 +54,7 @@ const requireRole = (allowedPrivileges) => {
         decoded?.resource_access["ocvt-dataset"].roles.concat(
           decoded?.resource_access["ocvt-dashboard"].roles
         ) || [];
-      console.log(userRoles);
+      // console.log(userRoles);
 
       // OR logique: autorise si intersection non vide
       const isAuthorizedLocally =

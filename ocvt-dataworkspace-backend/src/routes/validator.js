@@ -73,11 +73,16 @@ router.get(
             req.userId
           );
           res.json(result);
+        } else if (req.query.status === "UNPUBLISHED") {
+          const result = await dashboardService.getUnpublishedDashboards(
+            req.userId
+          );
+          res.json(result);
         } else {
           return res.status(400).json({
             success: false,
             error:
-              "Seul le statut SUBMITTED, REJECTED, VALIDATED ou PUBLISHED est autorisé",
+              "Seul le statut SUBMITTED, REJECTED, VALIDATED, PUBLISHED ou UNPUBLISHED est autorisé",
           });
         }
       } else {
