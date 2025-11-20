@@ -14,6 +14,7 @@ const xml2js = require("xml2js");
 const shapefile = require("shapefile");
 const AdmZip = require("adm-zip");
 const crypto = require("crypto");
+const axios = require("axios");
 const {
   streamToBuffer,
   flattenXml,
@@ -64,6 +65,111 @@ const decrypt = (encryptedData) => {
 const isValidDbIdentifier = (name) => {
   // Permet les lettres, chiffres et underscores. Empêche les caractères spéciaux qui pourraient être utilisés pour l'injection.
   return /^[a-zA-Z0-9_]+$/.test(name);
+};
+
+// Fonction utilitaire pour valider et formater les métadonnées API
+const validateAndFormatApiMetadata = async (metadata) => {
+  if (!metadata) {
+    throw new Error('Les détails de connexion sont requis pour le type "api"');
+  }
+
+  const {
+    url,
+    method = "GET",
+    headers = {},
+    credentials,
+    queryParams = {},
+    body = null,
+    timeout = null,
+    responseFormat = null,
+  } = metadata;
+
+  // Validation de l'URL (requis)
+  if (!url) {
+    throw new Error("L'URL est requise pour une source de type api");
+  }
+  try {
+    new URL(url);
+  } catch {
+    throw new Error("L'URL fournie est invalide");
+  }
+
+  // Validation de la méthode HTTP
+  const validMethods = [
+    "GET",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "HEAD",
+    "OPTIONS",
+  ];
+  const upperMethod = method.toUpperCase();
+  if (!validMethods.includes(upperMethod)) {
+    throw new Error(
+      `Méthode HTTP invalide. Méthodes acceptées : ${validMethods.join(", ")}`
+    );
+  }
+
+  // Validation des credentials (optionnel)
+  if (credentials) {
+    const hasBasicAuth = credentials.username && credentials.password;
+    const hasApiKey = credentials.api_key;
+    const hasBearerToken = credentials.bearer_token;
+    const hasCustomAuth = credentials.custom; // Pour des cas d'authentification personnalisés
+
+    if (!hasBasicAuth && !hasApiKey && !hasBearerToken && !hasCustomAuth) {
+      throw new Error(
+        "Les credentials doivent inclure username/password, api_key, bearer_token, ou custom"
+      );
+    }
+  }
+
+  // Validation du timeout (optionnel, doit être un nombre positif)
+  if (timeout !== null && timeout !== undefined) {
+    if (typeof timeout !== "number" || timeout <= 0) {
+      throw new Error(
+        "Le timeout doit être un nombre positif en millisecondes"
+      );
+    }
+  }
+
+  // Validation du format de réponse (optionnel)
+  if (responseFormat !== null && responseFormat !== undefined) {
+    const validFormats = ["json", "xml", "csv"];
+    if (!validFormats.includes(responseFormat.toLowerCase())) {
+      throw new Error(
+        `Format de réponse invalide. Formats acceptés : ${validFormats.join(
+          ", "
+        )}`
+      );
+    }
+  }
+
+  // Test de connexion à l'API avant de sauvegarder
+  const testMetadata = {
+    url,
+    method: upperMethod,
+    headers,
+    credentials,
+    queryParams,
+    timeout: timeout || 10000, // Utiliser le timeout fourni ou 10s par défaut
+  };
+  await testApiConnection(testMetadata);
+
+  // Construction de l'objet metadata à stocker
+  const metadataToStore = {
+    url,
+    method: upperMethod,
+    headers: Object.keys(headers).length > 0 ? headers : null,
+    credentials: credentials ? encrypt(JSON.stringify(credentials)) : null,
+    queryParams: Object.keys(queryParams).length > 0 ? queryParams : null,
+    body: body !== null && body !== undefined ? body : null,
+    timeout: timeout || null,
+    responseFormat: responseFormat || null,
+  };
+
+  return metadataToStore;
 };
 
 const BUCKET_NAME = process.env.MINIO_BUCKET;
@@ -261,36 +367,7 @@ const addDataSource = async (
       };
       fileFormat = "database";
     } else if (sourceType === "api") {
-      if (!metadata) {
-        throw new Error(
-          'Les détails de connexion sont requis pour le type "api"'
-        );
-      }
-      const { url, credentials } = metadata;
-      if (!url) {
-        throw new Error("L'URL est requise pour une source de type api");
-      }
-      try {
-        new URL(url);
-      } catch {
-        throw new Error("L'URL fournie est invalide");
-      }
-      if (credentials) {
-        if (
-          !(
-            (credentials.username && credentials.password) ||
-            credentials.api_key
-          )
-        ) {
-          throw new Error(
-            "Les credentials doivent inclure username/password ou api_key"
-          );
-        }
-      }
-      metadataToStore = {
-        url,
-        credentials: credentials ? encrypt(JSON.stringify(credentials)) : null,
-      };
+      metadataToStore = await validateAndFormatApiMetadata(metadata);
       fileFormat = "api";
     }
     // Création dans FinalResults
@@ -336,12 +413,11 @@ const addDataSource = async (
         fileFormat: fileExtension,
       };
       fileFormat = fileExtension;
-      // Mettre à jour la source avec le metadata
       nonFinalSource = await NonFinalSources.create({
         user_id: userId,
         source_type: sourceType,
         source_name: sourceName,
-        metadata: metadataToStore, // sera mis à jour après
+        metadata: metadataToStore,
       });
       // Créer l'état initial dans ProcessingStates
       // await ProcessingStates.create({
@@ -387,47 +463,16 @@ const addDataSource = async (
         user_id: userId,
         source_type: sourceType,
         source_name: sourceName,
-        metadata: metadataToStore, // sera mis à jour après
+        metadata: metadataToStore,
       });
-      // Pas d'état initial dans ProcessingStates tant qu'aucune extraction n'est faite
     } else if (sourceType === "api") {
-      if (!metadata) {
-        throw new Error(
-          'Les détails de connexion sont requis pour le type "api"'
-        );
-      }
-      const { url, credentials } = metadata;
-      if (!url) {
-        throw new Error("L'URL est requise pour une source de type api");
-      }
-      try {
-        new URL(url);
-      } catch {
-        throw new Error("L'URL fournie est invalide");
-      }
-      if (credentials) {
-        if (
-          !(
-            (credentials.username && credentials.password) ||
-            credentials.api_key
-          )
-        ) {
-          throw new Error(
-            "Les credentials doivent inclure username/password ou api_key"
-          );
-        }
-      }
-      metadataToStore = {
-        url,
-        credentials: credentials ? encrypt(JSON.stringify(credentials)) : null,
-      };
+      metadataToStore = await validateAndFormatApiMetadata(metadata);
       nonFinalSource = await NonFinalSources.create({
         user_id: userId,
         source_type: sourceType,
         source_name: sourceName,
-        metadata: metadataToStore, // sera mis à jour après
+        metadata: metadataToStore,
       });
-      // Pas d'état initial dans ProcessingStates tant qu'aucune extraction n'est faite
     }
     return {
       success: true,
@@ -437,7 +482,7 @@ const addDataSource = async (
   }
 };
 
-// Supprimer une source de données (NOUVEAU MODELE)
+// Supprimer une source de données
 const deleteDataSource = async (userId, sourceId, isFinal) => {
   if (isFinal) {
     // Suppression dans FinalResults
@@ -491,7 +536,7 @@ const deleteDataSource = async (userId, sourceId, isFinal) => {
   }
 };
 
-// Charger les données d'une source spécifique (NOUVEAU MODELE)
+// Charger les données d'une source spécifique
 const loadDataFromSource = async (userId, sourceId, limit = 10, offset = 0) => {
   // Essayer d'abord comme source finale
   let finalSource = await FinalResults.findOne({
@@ -645,10 +690,7 @@ const getFileForView = async (source_id, userId) => {
     throw new Error("Accès non autorisé à cette source");
   }
 
-  if (
-    finalSource.result_type === "file" &&
-    finalSource.metadata?.file_path
-  ) {
+  if (finalSource.result_type === "file" && finalSource.metadata?.file_path) {
     try {
       // Générer une URL pour le fichier (valide pendant 1 heure)
       const presignedUrl = await minioClient.presignedUrl(
@@ -743,6 +785,333 @@ const testDatabaseConnection = async ({
   }
 };
 
+// Teste la connexion à une API
+const testApiConnection = async (metadata) => {
+  const {
+    url,
+    method = "GET",
+    headers = {},
+    credentials,
+    queryParams = {},
+    timeout = 10000, // Timeout par défaut de 10 secondes
+  } = metadata;
+
+  // Configuration de base pour axios
+  const config = {
+    method: method.toUpperCase(),
+    url,
+    timeout: timeout,
+    validateStatus: (status) => status < 500, // Accepter les codes < 500 (même 404 est OK, ça signifie que l'API répond)
+  };
+
+  // Ajouter les query params si présents
+  if (Object.keys(queryParams).length > 0) {
+    config.params = queryParams;
+  }
+
+  // Construire les headers
+  const requestHeaders = { ...headers };
+
+  // Gérer l'authentification selon le type
+  if (credentials) {
+    if (credentials.username && credentials.password) {
+      // Authentification basique
+      const auth = Buffer.from(
+        `${credentials.username}:${credentials.password}`
+      ).toString("base64");
+      requestHeaders["Authorization"] = `Basic ${auth}`;
+    } else if (credentials.api_key) {
+      // Clé API - peut être dans un header personnalisé ou Authorization
+      // On essaie d'abord X-API-Key, sinon Authorization
+      if (credentials.api_key_header) {
+        requestHeaders[credentials.api_key_header] = credentials.api_key;
+      } else {
+        requestHeaders["X-API-Key"] = credentials.api_key;
+      }
+    } else if (credentials.bearer_token) {
+      // Token Bearer
+      requestHeaders["Authorization"] = `Bearer ${credentials.bearer_token}`;
+    } else if (credentials.custom) {
+      // Authentification personnalisée - on ajoute directement les headers personnalisés
+      if (typeof credentials.custom === "object") {
+        Object.assign(requestHeaders, credentials.custom);
+      }
+    }
+  }
+
+  config.headers = requestHeaders;
+
+  // Pour le test de connexion, on utilise HEAD si la méthode originale est HEAD,
+  // sinon on utilise GET pour éviter de modifier des données (POST/PUT/DELETE)
+  // Cela permet de tester la connexion sans effectuer d'opération potentiellement destructrice
+  const originalMethod = method.toUpperCase();
+  const testMethod = originalMethod === "HEAD" ? "HEAD" : "GET";
+  config.method = testMethod;
+
+  try {
+    const response = await axios(config);
+    // Si on obtient une réponse (même avec un code d'erreur 4xx), l'API est accessible
+    // Les codes 5xx indiquent un problème serveur, mais l'API répond quand même
+    return true;
+  } catch (err) {
+    if (err.code === "ECONNREFUSED") {
+      throw new Error(
+        "Connexion à l'API impossible : le serveur refuse la connexion. Vérifiez l'URL."
+      );
+    } else if (err.code === "ENOTFOUND") {
+      throw new Error(
+        "Connexion à l'API impossible : le domaine n'a pas été trouvé. Vérifiez l'URL."
+      );
+    } else if (err.code === "ETIMEDOUT" || err.code === "ECONNABORTED") {
+      throw new Error(
+        `Connexion à l'API impossible : timeout après ${timeout}ms. L'API ne répond pas dans les temps.`
+      );
+    } else if (err.response) {
+      // L'API a répondu mais avec une erreur
+      // Si c'est une erreur d'authentification (401, 403), on le signale
+      if (err.response.status === 401) {
+        throw new Error(
+          "Connexion à l'API impossible : authentification échouée (401). Vérifiez vos credentials."
+        );
+      } else if (err.response.status === 403) {
+        throw new Error(
+          "Connexion à l'API impossible : accès refusé (403). Vérifiez vos permissions."
+        );
+      } else {
+        // Autres erreurs HTTP - l'API répond mais avec une erreur
+        // On considère que c'est OK pour le test de connexion
+        return true;
+      }
+    } else {
+      throw new Error(
+        `Connexion à l'API impossible : ${err.message || "erreur inconnue"}`
+      );
+    }
+  }
+};
+
+// Récupère les données d'une API pour prévisualisation ou import
+const fetchApiData = async (metadata, limit = null, offset = 0) => {
+  const {
+    url,
+    method = "GET",
+    headers = null,
+    credentials: encryptedCredentials,
+    queryParams = null,
+    body = null,
+    timeout = 10000,
+    responseFormat = "json",
+  } = metadata;
+
+  // Déchiffrer les credentials si présents
+  let credentials = null;
+  if (encryptedCredentials) {
+    try {
+      const decryptedStr =
+        typeof encryptedCredentials === "object"
+          ? decrypt(encryptedCredentials)
+          : encryptedCredentials;
+      credentials = JSON.parse(decryptedStr);
+    } catch (err) {
+      throw new Error(
+        "Erreur lors du déchiffrement des credentials : " + err.message
+      );
+    }
+  }
+
+  // Configuration de base pour axios
+  const config = {
+    method: method.toUpperCase(),
+    url,
+    timeout: timeout || 10000,
+    validateStatus: (status) => status >= 200 && status < 300, // Accepter seulement les codes 2xx
+  };
+
+  // Ajouter les query params si présents
+  if (queryParams && Object.keys(queryParams).length > 0) {
+    config.params = queryParams;
+  }
+
+  // Construire les headers
+  const requestHeaders = headers ? { ...headers } : {};
+
+  // Gérer l'authentification selon le type
+  if (credentials) {
+    if (credentials.username && credentials.password) {
+      // Authentification basique
+      const auth = Buffer.from(
+        `${credentials.username}:${credentials.password}`
+      ).toString("base64");
+      requestHeaders["Authorization"] = `Basic ${auth}`;
+    } else if (credentials.api_key) {
+      // Clé API
+      if (credentials.api_key_header) {
+        requestHeaders[credentials.api_key_header] = credentials.api_key;
+      } else {
+        requestHeaders["X-API-Key"] = credentials.api_key;
+      }
+    } else if (credentials.bearer_token) {
+      // Token Bearer
+      requestHeaders["Authorization"] = `Bearer ${credentials.bearer_token}`;
+    } else if (credentials.custom) {
+      // Authentification personnalisée
+      if (typeof credentials.custom === "object") {
+        Object.assign(requestHeaders, credentials.custom);
+      }
+    }
+  }
+
+  config.headers = requestHeaders;
+
+  // Ajouter le body si présent (pour POST, PUT, PATCH)
+  if (body !== null && body !== undefined) {
+    if (typeof body === "object") {
+      // Si c'est un objet, on le stringify en JSON
+      config.data = body;
+      if (!requestHeaders["Content-Type"]) {
+        requestHeaders["Content-Type"] = "application/json";
+      }
+    } else {
+      config.data = body;
+    }
+  }
+
+  try {
+    const response = await axios(config);
+
+    // Parser la réponse selon le format
+    let dataRows = [];
+    const responseData = response.data;
+    const format = (responseFormat || "json").toLowerCase();
+
+    if (format === "json") {
+      // Si la réponse est déjà un array, l'utiliser directement
+      if (Array.isArray(responseData)) {
+        dataRows = responseData;
+      } else if (typeof responseData === "object") {
+        // Si c'est un objet, chercher une propriété qui contient un array
+        // (cas courant : { data: [...], results: [...], items: [...] })
+        const possibleKeys = ["data", "results", "items", "records", "rows"];
+        let found = false;
+        for (const key of possibleKeys) {
+          if (responseData[key] && Array.isArray(responseData[key])) {
+            dataRows = responseData[key];
+            found = true;
+            break;
+          }
+        }
+        // Si aucune clé standard n'est trouvée, convertir l'objet en array avec un seul élément
+        if (!found) {
+          dataRows = [responseData];
+        }
+      } else {
+        throw new Error(
+          "Format de réponse JSON invalide : réponse non structurée"
+        );
+      }
+    } else if (format === "xml") {
+      // Parser le XML
+      const parser = new xml2js.Parser();
+      const parsed = await parser.parseStringPromise(
+        typeof responseData === "string"
+          ? responseData
+          : JSON.stringify(responseData)
+      );
+      // Convertir le XML en array d'objets (structure dépend de l'API)
+      // On essaie de trouver un array dans la structure XML
+      dataRows = flattenXml(parsed);
+    } else if (format === "csv") {
+      // Parser le CSV
+      const csvString =
+        typeof responseData === "string"
+          ? responseData
+          : JSON.stringify(responseData);
+      const parsed = Papa.parse(csvString, { header: true });
+      dataRows = parsed.data || [];
+    // } else if (format === "text") {
+    //   // Pour le texte, créer un objet avec une seule colonne "value"
+    //   const textString =
+    //     typeof responseData === "string"
+    //       ? responseData
+    //       : JSON.stringify(responseData);
+    //   dataRows = [{ value: textString }];
+    } else {
+      throw new Error(`Format de réponse non supporté : ${format}`);
+    }
+
+    // Appliquer limit et offset si spécifiés
+    if (limit !== null && limit !== undefined) {
+      dataRows = dataRows.slice(offset, offset + limit);
+    } else if (offset > 0) {
+      dataRows = dataRows.slice(offset);
+    }
+
+    return dataRows;
+  } catch (err) {
+    if (err.response) {
+      throw new Error(
+        `Erreur API (${err.response.status}): ${
+          err.response.statusText || err.message
+        }`
+      );
+    } else if (err.code === "ECONNREFUSED") {
+      throw new Error("Connexion à l'API refusée. Vérifiez l'URL.");
+    } else if (err.code === "ENOTFOUND") {
+      throw new Error("Domaine de l'API introuvable. Vérifiez l'URL.");
+    } else if (err.code === "ETIMEDOUT" || err.code === "ECONNABORTED") {
+      throw new Error(`Timeout lors de la connexion à l'API (${timeout}ms).`);
+    } else {
+      throw new Error(
+        `Erreur lors de la récupération des données de l'API : ${err.message}`
+      );
+    }
+  }
+};
+
+// Récupère les données d'une source API (wrapper qui récupère la source et appelle fetchApiData)
+const fetchApiDataFromSource = async (
+  userId,
+  sourceId,
+  limit = null,
+  offset = 0
+) => {
+  // Récupérer la source non-finale
+  const source = await NonFinalSources.findOne({
+    where: { non_final_source_id: sourceId, user_id: userId },
+  });
+
+  if (!source) {
+    throw new Error("Source non trouvée ou non autorisée");
+  }
+
+  if (source.source_type !== "api") {
+    throw new Error("Cette source n'est pas de type API");
+  }
+
+  const metadata = source.metadata;
+  if (!metadata) {
+    throw new Error("Métadonnées de l'API manquantes");
+  }
+
+  // Récupérer les données via fetchApiData
+  const dataRows = await fetchApiData(metadata, limit, offset);
+
+  // Découvrir les colonnes disponibles depuis la première ligne
+  const columnsAvailable =
+    dataRows.length > 0 ? Object.keys(dataRows[0] || {}) : [];
+
+  return {
+    success: true,
+    source_id: sourceId,
+    source_name: source.source_name,
+    columns: columnsAvailable,
+    data: dataRows,
+    limit: limit || dataRows.length,
+    offset: offset,
+    total: dataRows.length,
+  };
+};
+
 // Lister les fichiers supportés
 const listSupportedFileExtensions = async () => {
   const files = await SupportedFileExtensions.findAll({
@@ -785,7 +1154,7 @@ const listSupportedCharts = async () => {
   };
 };
 
-// Lister les tables d'une source de base de données (nouveau modèle)
+// Lister les tables d'une source de base de données
 const listTablesOfDatabaseSource = async (sourceId) => {
   const source = await NonFinalSources.findOne({
     where: { non_final_source_id: sourceId },
@@ -874,7 +1243,7 @@ const listTablesOfDatabaseSource = async (sourceId) => {
   }
 };
 
-// Lister les colonnes d'une table d'une source de base de données (nouveau modèle)
+// Lister les colonnes d'une table d'une source de base de données
 const listColumnsOfTable = async (sourceId, tableName) => {
   const source = await NonFinalSources.findOne({
     where: { non_final_source_id: sourceId },
@@ -1347,6 +1716,37 @@ const createInitialProcessingState = async ({
     } else {
       throw new Error("Format de fichier non supporté pour l'import initial");
     }
+  } else if (sourceType === "api") {
+    // Pour les API, récupérer toutes les données
+    let allDataRows = await fetchApiData(metadata);
+
+    if (!allDataRows || allDataRows.length === 0) {
+      throw new Error("Aucune donnée trouvée dans la réponse de l'API");
+    }
+
+    // Découvrir les colonnes disponibles depuis la première ligne
+    const availableCols = Object.keys(allDataRows[0] || {});
+    if (availableCols.length === 0) {
+      throw new Error("Aucune colonne trouvée dans les données de l'API");
+    }
+
+    // Vérifier que toutes les colonnes demandées existent
+    for (const col of columns) {
+      if (!availableCols.includes(col)) {
+        throw new Error(
+          `Colonne non trouvée dans les données de l'API : ${col}`
+        );
+      }
+    }
+
+    // Filtrer les données pour ne garder que les colonnes sélectionnées
+    dataRows = allDataRows.map((row) => {
+      const filtered = {};
+      columns.forEach((col) => {
+        filtered[col] = row[col];
+      });
+      return filtered;
+    });
   } else {
     throw new Error("Type de source non supporté pour l'import initial");
   }
@@ -1607,6 +2007,43 @@ const previewSelectedColumns = async ({
         "Format de fichier non supporté pour la prévisualisation"
       );
     }
+  } else if (sourceType === "api") {
+    // Pour les API, récupérer suffisamment de données pour découvrir les colonnes
+    // et avoir les données nécessaires pour offset/limit
+    // On récupère max(limit + offset, 100) pour être sûr d'avoir assez de données
+    const fetchLimit = Math.max(limit + offset, 100);
+    let allDataRows = await fetchApiData(metadata, fetchLimit, 0);
+
+    if (!allDataRows || allDataRows.length === 0) {
+      throw new Error("Aucune donnée trouvée dans la réponse de l'API");
+    }
+
+    // Découvrir les colonnes disponibles depuis la première ligne
+    columnsAvailable = Object.keys(allDataRows[0] || {});
+    if (columnsAvailable.length === 0) {
+      throw new Error("Aucune colonne trouvée dans les données de l'API");
+    }
+
+    // Vérifier que toutes les colonnes demandées existent
+    for (const col of columns) {
+      if (!columnsAvailable.includes(col)) {
+        throw new Error(
+          `Colonne non trouvée dans les données de l'API : ${col}`
+        );
+      }
+    }
+
+    // Filtrer les données pour ne garder que les colonnes sélectionnées
+    // et appliquer offset/limit
+    dataRows = allDataRows
+      .map((row) => {
+        const filtered = {};
+        columns.forEach((col) => {
+          filtered[col] = row[col];
+        });
+        return filtered;
+      })
+      .slice(offset, offset + limit);
   } else {
     throw new Error("Type de source non supporté pour la prévisualisation");
   }
@@ -1781,4 +2218,6 @@ module.exports = {
   getStateContentsAsJson,
   getFullProcessingHistory,
   getFileForView,
+  fetchApiData,
+  fetchApiDataFromSource,
 };

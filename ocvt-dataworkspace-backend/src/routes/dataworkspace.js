@@ -147,6 +147,8 @@ router.post(
       .if((value, { req }) => req.body.type === "api")
       .custom((value) => {
         const details = typeof value === "string" ? JSON.parse(value) : value;
+
+        // Validation de l'URL (requis)
         if (!details.url) {
           throw new Error("L'URL est requise pour api");
         }
@@ -155,18 +157,92 @@ router.post(
         } catch {
           throw new Error("L'URL fournie est invalide");
         }
-        if (details.credentials) {
-          if (
-            !(
-              (details.credentials.username && details.credentials.password) ||
-              details.credentials.api_key
-            )
-          ) {
+
+        // Validation de la méthode HTTP (optionnel)
+        if (details.method) {
+          const validMethods = [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE",
+            "HEAD",
+            "OPTIONS",
+          ];
+          const upperMethod = details.method.toUpperCase();
+          if (!validMethods.includes(upperMethod)) {
             throw new Error(
-              "Les credentials doivent inclure username/password ou api_key"
+              `Méthode HTTP invalide. Méthodes acceptées : ${validMethods.join(
+                ", "
+              )}`
             );
           }
         }
+
+        // Validation des credentials (optionnel)
+        if (details.credentials) {
+          const hasBasicAuth =
+            details.credentials.username && details.credentials.password;
+          const hasApiKey = details.credentials.api_key;
+          const hasBearerToken = details.credentials.bearer_token;
+          const hasCustomAuth = details.credentials.custom;
+
+          if (
+            !hasBasicAuth &&
+            !hasApiKey &&
+            !hasBearerToken &&
+            !hasCustomAuth
+          ) {
+            throw new Error(
+              "Les credentials doivent inclure username/password, api_key, bearer_token, ou custom"
+            );
+          }
+        }
+
+        // Validation du timeout (optionnel)
+        if (details.timeout !== null && details.timeout !== undefined) {
+          if (typeof details.timeout !== "number" || details.timeout <= 0) {
+            throw new Error(
+              "Le timeout doit être un nombre positif en millisecondes"
+            );
+          }
+        }
+
+        // Validation du format de réponse (optionnel)
+        if (
+          details.responseFormat !== null &&
+          details.responseFormat !== undefined
+        ) {
+          const validFormats = ["json", "xml", "csv", "text", "binary"];
+          if (!validFormats.includes(details.responseFormat.toLowerCase())) {
+            throw new Error(
+              `Format de réponse invalide. Formats acceptés : ${validFormats.join(
+                ", "
+              )}`
+            );
+          }
+        }
+
+        // Validation des headers (optionnel, doit être un objet)
+        if (details.headers !== null && details.headers !== undefined) {
+          if (
+            typeof details.headers !== "object" ||
+            Array.isArray(details.headers)
+          ) {
+            throw new Error("Les headers doivent être un objet");
+          }
+        }
+
+        // Validation des queryParams (optionnel, doit être un objet)
+        if (details.queryParams !== null && details.queryParams !== undefined) {
+          if (
+            typeof details.queryParams !== "object" ||
+            Array.isArray(details.queryParams)
+          ) {
+            throw new Error("Les queryParams doivent être un objet");
+          }
+        }
+
         return true;
       }),
     check("file")
@@ -223,9 +299,65 @@ router.post(
         error.message.includes("L'URL est requise") ||
         error.message.includes("L'URL fournie est invalide") ||
         error.message.includes("Les credentials doivent inclure") ||
-        error.message.includes("Le paramètre is_final doit être un booléen")
+        error.message.includes("Méthode HTTP invalide") ||
+        error.message.includes("Le timeout doit être un nombre positif") ||
+        error.message.includes("Format de réponse invalide") ||
+        error.message.includes("Les headers doivent être un objet") ||
+        error.message.includes("Les queryParams doivent être un objet") ||
+        error.message.includes("Le paramètre is_final doit être un booléen") ||
+        error.message.includes("Connexion à l'API impossible")
       ) {
         return res.status(400).json({ error: error.message });
+      }
+      res.status(500).json({ error: "Erreur serveur : " + error.message });
+    }
+  }
+);
+
+// GET /data-sources/:source_id/api-data
+// Récupère les données d'une source API
+router.get(
+  "/data-sources/:source_id/api-data",
+  authMiddleware,
+  requireRole(["LIST_DATA", "LOAD_DATA"]),
+  [
+    param("source_id").isInt().withMessage("ID de la source invalide"),
+    query("limit")
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage("La limite doit être un entier positif"),
+    query("offset")
+      .optional()
+      .isInt({ min: 0 })
+      .withMessage("L'offset doit être un entier positif ou zéro"),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { source_id } = req.params;
+    const limit = req.query.limit ? parseInt(req.query.limit) : null;
+    const offset = req.query.offset ? parseInt(req.query.offset) : 0;
+    const userId = req.user.id;
+
+    try {
+      const result = await dataworkspaceService.fetchApiDataFromSource(
+        userId,
+        parseInt(source_id),
+        limit,
+        offset
+      );
+      res.status(200).json(result);
+    } catch (error) {
+      if (
+        error.message.includes("Source non trouvée") ||
+        error.message.includes("non autorisée") ||
+        error.message.includes("n'est pas de type API") ||
+        error.message.includes("Métadonnées de l'API manquantes")
+      ) {
+        return res.status(404).json({ error: error.message });
       }
       res.status(500).json({ error: "Erreur serveur : " + error.message });
     }
@@ -317,9 +449,7 @@ router.get(
 
 router.get(
   "/data-sources/:source_id/view",
-  [
-    param("source_id").isInt().withMessage("ID de la source invalide"),
-  ],
+  [param("source_id").isInt().withMessage("ID de la source invalide")],
   authMiddleware,
   requireRole(["LIST_DATA", "LOAD_DATA"]),
   async (req, res) => {
@@ -340,14 +470,10 @@ router.get(
     } catch (error) {
       if (
         error.message === "Source de données non trouvée" ||
-        error.message === "Accès non autorisé à cette source"
-      ) {
-        return res.status(404).json({ error: error.message });
-      }
-      if (
+        error.message === "Accès non autorisé à cette source" ||
         error.message === "Fichier non trouvé dans le système de fichiers"
       ) {
-        return res.status(400).json({ error: error.message });
+        return res.status(404).json({ error: error.message });
       }
       res.status(500).json({ error: "Erreur serveur : " + error.message });
     }
