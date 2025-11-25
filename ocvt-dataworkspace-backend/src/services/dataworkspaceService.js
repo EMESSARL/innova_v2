@@ -173,6 +173,115 @@ const validateAndFormatApiMetadata = async (metadata) => {
 };
 
 const BUCKET_NAME = process.env.MINIO_BUCKET;
+const SUPPORTED_SPREADSHEET_FORMATS = ["xls", "xlsx"];
+const SUPPORTED_CSV_FORMATS = ["csv", "txt"];
+const FLOAT_REGEX = /^-?\d+(\.\d+)?$/;
+
+const stripBom = (value) => {
+  if (!value || value.length === 0) return value;
+  return value.charCodeAt(0) === 0xfeff ? value.slice(1) : value;
+};
+
+const inferColumnType = (values = []) => {
+  const cleaned = values
+    .map((value) => (typeof value === "string" ? value.trim() : value))
+    .filter((value) => value !== null && value !== undefined && value !== "");
+
+  if (cleaned.length === 0) {
+    return "text";
+  }
+
+  const isBoolean = cleaned.every((value) => {
+    if (typeof value === "boolean") return true;
+    const lower = String(value).toLowerCase();
+    return ["true", "false", "1", "0", "yes", "no", "oui", "non"].includes(
+      lower
+    );
+  });
+  if (isBoolean) return "boolean";
+
+  const isInteger = cleaned.every((value) => {
+    if (typeof value === "number") return Number.isInteger(value);
+    const num = Number(value);
+    return !Number.isNaN(num) && Number.isInteger(num);
+  });
+  if (isInteger) return "integer";
+
+  const isDate = cleaned.every((value) => {
+    if (value instanceof Date) return !Number.isNaN(value.getTime());
+    if (typeof value !== "string") return false;
+    const parsed = Date.parse(value);
+    return !Number.isNaN(parsed);
+  });
+  if (isDate) return "date";
+
+  const isFloat = cleaned.every((value) => {
+    if (typeof value === "number") return Number.isFinite(value);
+    if (typeof value === "string") {
+      return FLOAT_REGEX.test(value);
+    }
+    return false;
+  });
+  if (isFloat) return "float";
+
+  return "text";
+};
+
+const buildColumnsSchema = (rows = [], fallbackHeaders = []) => {
+  let columnNames =
+    rows.length > 0 ? Object.keys(rows[0]) : fallbackHeaders.filter(Boolean);
+  columnNames = columnNames.map((name, index) =>
+    name && name !== "" ? name : `column_${index + 1}`
+  );
+
+  return columnNames.map((name, index) => {
+    const values = rows.map((row) => row[name]);
+    return {
+      name,
+      type: inferColumnType(values),
+    };
+  });
+};
+
+const getFileSourceDetails = async (userId, sourceId) => {
+  let sourceRecord = await FinalResults.findOne({
+    where: { final_result_id: sourceId, user_id: userId },
+  });
+
+  if (sourceRecord) {
+    if (sourceRecord.result_type !== "file") {
+      throw new Error("La source demandée n'est pas un fichier");
+    }
+    const metadata = sourceRecord.metadata || {};
+    if (!metadata.file_path || !metadata.fileFormat) {
+      throw new Error("Métadonnées de fichier incomplètes");
+    }
+    return {
+      source_id: sourceRecord.final_result_id,
+      source_name: sourceRecord.result_name,
+      metadata,
+      fileFormat: metadata.fileFormat.toLowerCase(),
+    };
+  }
+
+  sourceRecord = await NonFinalSources.findOne({
+    where: { non_final_source_id: sourceId, user_id: userId },
+  });
+
+  if (!sourceRecord || sourceRecord.source_type !== "file") {
+    throw new Error("Source de données non trouvée ou non autorisée");
+  }
+  const metadata = sourceRecord.metadata || {};
+  if (!metadata.file_path || !metadata.fileFormat) {
+    throw new Error("Métadonnées de fichier incomplètes");
+  }
+  return {
+    source_id: sourceRecord.non_final_source_id,
+    source_name: sourceRecord.source_name,
+    metadata,
+    fileFormat: metadata.fileFormat.toLowerCase(),
+  };
+};
 
 // Lister les sources de données de l'utilisateur (nouvelle version)
 const listDataSources = async (userId) => {
@@ -1028,13 +1137,13 @@ const fetchApiData = async (metadata, limit = null, offset = 0) => {
           : JSON.stringify(responseData);
       const parsed = Papa.parse(csvString, { header: true });
       dataRows = parsed.data || [];
-    // } else if (format === "text") {
-    //   // Pour le texte, créer un objet avec une seule colonne "value"
-    //   const textString =
-    //     typeof responseData === "string"
-    //       ? responseData
-    //       : JSON.stringify(responseData);
-    //   dataRows = [{ value: textString }];
+      // } else if (format === "text") {
+      //   // Pour le texte, créer un objet avec une seule colonne "value"
+      //   const textString =
+      //     typeof responseData === "string"
+      //       ? responseData
+      //       : JSON.stringify(responseData);
+      //   dataRows = [{ value: textString }];
     } else {
       throw new Error(`Format de réponse non supporté : ${format}`);
     }
@@ -2198,6 +2307,164 @@ const getFullProcessingHistory = async (nonFinalSourceId) => {
   return { success: true, history };
 };
 
+const getFileStructure = async ({ userId, sourceId }) => {
+  const fileSource = await getFileSourceDetails(userId, sourceId);
+  const { metadata, fileFormat, source_name } = fileSource;
+  const fileStream = await minioClient.getObject(
+    BUCKET_NAME,
+    metadata.file_path
+  );
+  const fileBuffer = await streamToBuffer(fileStream);
+
+  if (SUPPORTED_SPREADSHEET_FORMATS.includes(fileFormat)) {
+    const workbook = XLSX.read(fileBuffer, { type: "buffer" });
+    const sheets = workbook.SheetNames.map((sheetName) => {
+      const worksheet = workbook.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+      const headerRows = XLSX.utils.sheet_to_json(worksheet, {
+        header: 1,
+        defval: null,
+        blankrows: false,
+      });
+      const columns = buildColumnsSchema(rows, headerRows[0] || []);
+      return {
+        sheet_name: sheetName,
+        columns,
+        row_count: rows.length,
+      };
+    });
+
+    return {
+      success: true,
+      data: {
+        source_id: fileSource.source_id,
+        source_name,
+        sheets,
+      },
+    };
+  }
+
+  if (SUPPORTED_CSV_FORMATS.includes(fileFormat)) {
+    const csvString = stripBom(fileBuffer.toString("utf8"));
+    const parsed = Papa.parse(csvString, {
+      header: true,
+      skipEmptyLines: true,
+    });
+    const rows = parsed.data || [];
+    const columns = buildColumnsSchema(rows, parsed.meta.fields || []);
+    const sheetName =
+      metadata.original_filename || `${source_name || "Sheet"} (CSV)`;
+
+    return {
+      success: true,
+      data: {
+        source_id: fileSource.source_id,
+        source_name,
+        sheets: [
+          {
+            sheet_name: sheetName,
+            columns,
+            row_count: rows.length,
+          },
+        ],
+      },
+    };
+  }
+
+  throw new Error("Format de fichier non supporté pour la structure");
+};
+
+const getSheetData = async ({
+  userId,
+  sourceId,
+  sheetName,
+  limit = 100,
+  offset = 0,
+}) => {
+  const fileSource = await getFileSourceDetails(userId, sourceId);
+  const { metadata, fileFormat, source_name } = fileSource;
+
+  const fileStream = await minioClient.getObject(
+    BUCKET_NAME,
+    metadata.file_path
+  );
+  const fileBuffer = await streamToBuffer(fileStream);
+  const safeLimit = Number.isInteger(limit) ? limit : 100;
+  const safeOffset = Number.isInteger(offset) ? offset : 0;
+
+  if (SUPPORTED_SPREADSHEET_FORMATS.includes(fileFormat)) {
+    const workbook = XLSX.read(fileBuffer, { type: "buffer" });
+    const sheetNames = workbook.SheetNames || [];
+    if (sheetNames.length === 0) {
+      throw new Error("Aucune feuille détectée dans ce fichier");
+    }
+    const selectedSheet = sheetName || sheetNames[0];
+    if (!sheetNames.includes(selectedSheet)) {
+      throw new Error("Feuille demandée introuvable dans ce fichier");
+    }
+    const worksheet = workbook.Sheets[selectedSheet];
+    const rows = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+    const headerRows = XLSX.utils.sheet_to_json(worksheet, {
+      header: 1,
+      defval: null,
+      blankrows: false,
+    });
+    const columns = buildColumnsSchema(rows, headerRows[0] || []);
+    const total = rows.length;
+    const paginated = rows.slice(safeOffset, safeOffset + safeLimit);
+
+    return {
+      success: true,
+      data: {
+        source_id: fileSource.source_id,
+        source_name,
+        sheet_name: selectedSheet,
+        columns,
+        rows: paginated,
+        pagination: {
+          limit: safeLimit,
+          offset: safeOffset,
+          total,
+        },
+      },
+    };
+  }
+
+  if (SUPPORTED_CSV_FORMATS.includes(fileFormat)) {
+    const csvString = stripBom(fileBuffer.toString("utf8"));
+    const parsed = Papa.parse(csvString, {
+      header: true,
+      skipEmptyLines: true,
+    });
+    const rows = parsed.data || [];
+    const columns = buildColumnsSchema(rows, parsed.meta.fields || []);
+    const total = rows.length;
+    const paginated = rows.slice(safeOffset, safeOffset + safeLimit);
+    const effectiveSheetName =
+      sheetName ||
+      metadata.original_filename ||
+      `${source_name || "Sheet"} (CSV)`;
+
+    return {
+      success: true,
+      data: {
+        source_id: fileSource.source_id,
+        source_name,
+        sheet_name: effectiveSheetName,
+        columns,
+        rows: paginated,
+        pagination: {
+          limit: safeLimit,
+          offset: safeOffset,
+          total,
+        },
+      },
+    };
+  }
+
+  throw new Error("Format de fichier non supporté pour la lecture de données");
+};
+
 module.exports = {
   listDataSources,
   addDataSource,
@@ -2220,4 +2487,6 @@ module.exports = {
   getFileForView,
   fetchApiData,
   fetchApiDataFromSource,
+  getFileStructure,
+  getSheetData,
 };

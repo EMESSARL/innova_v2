@@ -480,6 +480,102 @@ router.get(
   }
 );
 
+router.get(
+  "/data-sources/:source_id/file-structure",
+  authMiddleware,
+  requireRole(["LIST_DATA", "LOAD_DATA"]),
+  [param("source_id").isInt().withMessage("ID de la source invalide")],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+    const userId = req.user.id;
+    const sourceId = parseInt(req.params.source_id, 10);
+    try {
+      const result = await dataworkspaceService.getFileStructure({
+        userId,
+        sourceId,
+      });
+      res.status(200).json(result);
+    } catch (error) {
+      if (
+        error.message.includes("Source de données non trouvée") ||
+        error.message.includes("non autorisée")
+      ) {
+        return res.status(404).json({ error: error.message });
+      }
+      if (
+        error.message.includes("La source demandée n'est pas un fichier") ||
+        error.message.includes("Format de fichier non supporté") ||
+        error.message.includes("Métadonnées de fichier incomplètes")
+      ) {
+        return res.status(400).json({ error: error.message });
+      }
+      res.status(500).json({ error: "Erreur serveur : " + error.message });
+    }
+  }
+);
+
+router.get(
+  "/data-sources/:source_id/sheets/data",
+  authMiddleware,
+  requireRole(["LIST_DATA", "LOAD_DATA"]),
+  [
+    param("source_id").isInt().withMessage("ID de la source invalide"),
+    query("sheet_name")
+      .optional()
+      .isString()
+      .withMessage("sheet_name doit être une chaîne de caractères"),
+    query("limit")
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage("La limite doit être un entier positif"),
+    query("offset")
+      .optional()
+      .isInt({ min: 0 })
+      .withMessage("L'offset doit être un entier positif ou zéro"),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+    const userId = req.user.id;
+    const sourceId = parseInt(req.params.source_id, 10);
+    const sheetName = req.query.sheet_name || null;
+    const limit = req.query.limit ? parseInt(req.query.limit, 10) : 100;
+    const offset = req.query.offset ? parseInt(req.query.offset, 10) : 0;
+    try {
+      const result = await dataworkspaceService.getSheetData({
+        userId,
+        sourceId,
+        sheetName,
+        limit,
+        offset,
+      });
+      res.status(200).json(result);
+    } catch (error) {
+      if (
+        error.message.includes("Source de données non trouvée") ||
+        error.message.includes("non autorisée")
+      ) {
+        return res.status(404).json({ error: error.message });
+      }
+      if (
+        error.message.includes("La source demandée n'est pas un fichier") ||
+        error.message.includes("Format de fichier non supporté") ||
+        error.message.includes("Métadonnées de fichier incomplètes") ||
+        error.message.includes("sheet_name est requis") ||
+        error.message.includes("Feuille demandée introuvable")
+      ) {
+        return res.status(400).json({ error: error.message });
+      }
+      res.status(500).json({ error: "Erreur serveur : " + error.message });
+    }
+  }
+);
+
 // GET /supported-database-types
 router.get(
   "/supported-database-types",
