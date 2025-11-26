@@ -121,7 +121,7 @@ router.post(
         error.message.includes("Type de fusion non supporté") ||
         error.message.includes("Clés de fusion manquantes") ||
         error.message.includes("Nombre de suffixes insuffisant") ||
-        error.message.includes("Clé introuvable dans le dataset") ||
+        error.message.includes("introuvable dans le dataset") ||
         error.message.includes("Erreur lors de la fusion") ||
         error.message.includes("Format de sortie invalide")
       ) {

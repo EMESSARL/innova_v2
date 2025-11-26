@@ -100,7 +100,7 @@ async def merge_datasets(body: RequestBody) -> dict[str, Any]:
         if key not in df.columns:
             raise HTTPException(
                 status_code=400,
-                detail=f"Clé {key} introuvable dans le dataset {state_id}",
+                detail=f"Clé {key} introuvable dans le dataset du state {state_id}",
             )
 
     # Fusionner les datasets

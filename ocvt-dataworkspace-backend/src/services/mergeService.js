@@ -15,6 +15,7 @@ const mergeDatasets = async (
   // Récupérer les états courants de chaque source à fusionner
   const filesInfo = [];
   const sourceIds = [];
+  const states = [];
   for (const stateId of stateIds) {
     // const source = await NonFinalSources.findOne({
     //   where: { non_final_source_id: sourceId, user_id: userId },
@@ -32,6 +33,7 @@ const mergeDatasets = async (
     if (!state) {
       throw new Error(`Aucun état courant trouvé pour la source ${stateId}`);
     }
+    states.push(state);
     sourceIds.push(state.non_final_source_id);
     filesInfo.push({
       state_id: state.state_id,
@@ -88,6 +90,24 @@ const mergeDatasets = async (
     //   if (prev) await prev.update({ is_current: false });
     // }
 
+    // Fusionner les transformation_parameters de tous les états sources
+    const mergedTransformationParameters = {
+      sources: sourceIds,
+      key_mappings: keyMappings,
+      merge_type: mergeType,
+      duplicate_handling: duplicateHandling,
+      suffixes: suffixes,
+      ...resultMetadata,
+    };
+
+    // Ajouter les paramètres de transformation de chaque état source
+    states.forEach((state, index) => {
+      if (state.transformation_parameters) {
+        mergedTransformationParameters[`source_${index}_params`] =
+          state.transformation_parameters;
+      }
+    });
+
     const newState = await ProcessingStates.create({
       non_final_source_id: sourceIds[0],
       parent_state_id: stateIds[0],
@@ -96,15 +116,7 @@ const mergeDatasets = async (
       file_path: result_path,
       file_format: outputFormat,
       transformation_type: "merge",
-      transformation_parameters: {
-        sources: sourceIds,
-        key_mappings: keyMappings,
-        merge_type: mergeType,
-        duplicate_handling: duplicateHandling,
-        suffixes: suffixes,
-        ...resultMetadata,
-        ...previousState.transformation_parameters,
-      },
+      transformation_parameters: mergedTransformationParameters,
     });
 
     return {
@@ -119,6 +131,7 @@ const mergeDatasets = async (
       message: "Fusion effectuée avec succès",
     };
   } catch (error) {
+    console.error("Erreur lors de la fusion des sources:", error);
     throw new Error(
       error.response?.data?.detail || "Erreur lors de la fusion des sources"
     );
