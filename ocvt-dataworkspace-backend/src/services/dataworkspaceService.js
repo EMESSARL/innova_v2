@@ -1623,6 +1623,7 @@ const createInitialProcessingState = async ({
   sourceId,
   columns,
   tableName = null,
+  sheetName = null,
 }) => {
   if (!Array.isArray(columns) || columns.length === 0) {
     throw new Error("Aucune colonne sélectionnée");
@@ -1639,6 +1640,7 @@ const createInitialProcessingState = async ({
   let filePath;
   let transformationParameters = { columns };
   if (tableName) transformationParameters.table = tableName;
+  if (sheetName) transformationParameters.sheet_name = sheetName;
 
   if (sourceType === "database") {
     // Vérification des identifiants de table et colonnes
@@ -1803,8 +1805,19 @@ const createInitialProcessingState = async ({
       });
     } else if (["xls", "xlsx"].includes(metadata.fileFormat)) {
       const workbook = XLSX.read(fileBuffer, { type: "buffer" });
-      const sheetName = workbook.SheetNames[0];
-      const sheet = workbook.Sheets[sheetName];
+      // Utiliser la feuille spécifiée ou la première par défaut
+      const targetSheetName = sheetName || workbook.SheetNames[0];
+
+      // Vérifier que la feuille existe
+      if (!workbook.SheetNames.includes(targetSheetName)) {
+        throw new Error(
+          `Feuille "${targetSheetName}" non trouvée dans le fichier Excel. Feuilles disponibles : ${workbook.SheetNames.join(
+            ", "
+          )}`
+        );
+      }
+
+      const sheet = workbook.Sheets[targetSheetName];
       const json = XLSX.utils.sheet_to_json(sheet);
       if (!json || json.length === 0) {
         throw new Error("Aucune donnée trouvée dans le fichier Excel");

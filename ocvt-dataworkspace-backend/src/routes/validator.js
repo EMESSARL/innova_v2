@@ -41,7 +41,7 @@ const handleValidationErrors = (req, res, next) => {
 router.get(
   "/dashboards",
   authMiddleware,
-  requireRole(["LIST_DASHBOARD"]),
+  requireRole(["LIST_DASHBOARD", "LIST_SUBMITTED_DASHBOARD"]),
   extractUserId,
   async (req, res) => {
     try {
@@ -104,7 +104,7 @@ router.get(
 router.get(
   "/dashboards/:id",
   authMiddleware,
-  requireRole(["LIST_DASHBOARD"]),
+  requireRole(["LIST_DASHBOARD", "LIST_SUBMITTED_DASHBOARD"]),
   extractUserId,
   [check("id").isUUID().withMessage("ID de dashboard invalide")],
   handleValidationErrors,

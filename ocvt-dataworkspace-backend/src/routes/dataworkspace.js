@@ -721,7 +721,14 @@ router.post(
   [
     check("sourceId").isInt().withMessage("ID de la source requis"),
     check("columns").isArray({ min: 1 }).withMessage("Colonnes requises"),
-    check("tableName").optional().isString(),
+    check("tableName")
+      .optional()
+      .isString()
+      .withMessage("Le nom de la table doit être une chaîne de caractères"),
+    check("sheetName")
+      .optional()
+      .isString()
+      .withMessage("Le nom de la feuille doit être une chaîne de caractères"),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -729,13 +736,14 @@ router.post(
       return res.status(400).json({ errors: errors.array() });
     }
     const userId = req.user.id;
-    const { sourceId, columns, tableName } = req.body;
+    const { sourceId, columns, tableName, sheetName } = req.body;
     try {
       const result = await dataworkspaceService.createInitialProcessingState({
         userId,
         sourceId,
         columns,
         tableName,
+        sheetName,
       });
       res.status(201).json(result);
     } catch (error) {
